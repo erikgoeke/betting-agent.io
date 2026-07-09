@@ -1,0 +1,31 @@
+[project]
+name = "sba"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Erik Goeke" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pandas<3",
+    "pyarrow>=24.0.0",
+    "pybaseball>=2.2.7",
+    "python-dotenv>=1.2.2",
+    "requests>=2.34.2",
+    "scikit-learn>=1.9.0",
+    "typer>=0.12",
+]
+
+[project.scripts]
+sba = "sba.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.9.7,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-mock>=3.15.1",
+]

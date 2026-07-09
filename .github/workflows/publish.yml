@@ -1,0 +1,73 @@
+name: Publish MLB report to GitHub Pages
+
+on:
+  schedule:
+    # 11:00 UTC (~7am ET) daily -- well before the earliest MLB games. Adjust for
+    # your timezone/preference; this repo's report is regenerated fresh each run.
+    - cron: "0 11 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # Persists data/ (historical game + player-log cache) and models/ (trained
+      # model) across otherwise-ephemeral runners. The player-prop cache has a 20h
+      # TTL by design, so on this once-daily schedule it's mostly refetched anyway --
+      # this mainly saves the multi-season team-game history from being rebuilt from
+      # scratch every run.
+      - name: Restore data/model cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/
+            models/
+          key: sba-cache-${{ github.run_id }}
+          restore-keys: |
+            sba-cache-
+
+      - name: Fetch historical game data
+        run: uv run sba fetch-data
+
+      - name: Train model
+        run: uv run sba train
+
+      - name: Generate report
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: uv run sba report --output public/index.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
