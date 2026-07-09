@@ -27,6 +27,7 @@ class Pick:
     side_market_prob: float
     edge: float
     suggested_stake_pct: float
+    n_books: int = 0
 
 
 def _kelly_stake(model_prob: float, decimal_odds: float) -> float:
@@ -82,6 +83,7 @@ def generate_picks(*, history_seasons: list[int]) -> list[Pick]:
                 side_market_prob=side_market_prob,
                 edge=edge,
                 suggested_stake_pct=stake_pct,
+                n_books=mg["n_bookmakers"],
             )
         )
 

@@ -73,6 +73,15 @@ def american_to_decimal(odds: float) -> float:
     return 1 + 100 / -odds
 
 
+def prob_to_american(prob: float) -> float:
+    """Convert a win probability to the fair (no-vig) American line it implies."""
+    if prob <= 0 or prob >= 1:
+        raise ValueError(f"probability must be in (0, 1), got {prob}")
+    if prob > 0.5:
+        return -100 * prob / (1 - prob)
+    return 100 * (1 - prob) / prob
+
+
 def fetch_mlb_odds(api_key: str | None = None) -> list[dict]:
     """Fetch today's MLB moneyline odds. Raises OddsAPIError on failure or missing key."""
     key = api_key or ODDS_API_KEY

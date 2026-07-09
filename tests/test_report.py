@@ -57,9 +57,13 @@ def test_generate_report_includes_picks_and_props(tmp_path, monkeypatch):
     assert "Test Batter" in text
     assert "NYY" in text and "BOS" in text
     assert "-130" in text
-    assert "Moneyline picks" in text
-    assert "Today's prop projections" in text
-    assert "not financial advice" in text.lower()
+    assert "Moneyline" in text
+    assert "Methodology" in text
+    # Fair line for the 58% model probability: -100*0.58/0.42 = -138.
+    assert "-138" in text
+    # MathML methodology section renders natively, no external scripts.
+    assert "<math" in text
+    assert "cdn" not in text.lower()
 
 
 def test_generate_report_degrades_gracefully_when_picks_unavailable(tmp_path, monkeypatch):
