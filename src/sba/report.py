@@ -37,96 +37,154 @@ EASTERN = ZoneInfo("America/New_York")
 PAGE_STYLE = """
 :root {
   color-scheme: light dark;
-  --page: #f9f9f7; --surface: #fcfcfb;
+  --page: #f6f6f3; --surface: #fcfcfb; --inset: #f1f0ec;
   --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-  --hairline: #e1e0d9; --ring: rgba(11,11,11,0.10);
-  --accent: #2a78d6; --accent-soft: #cde2fb;
+  --hairline: #e6e5df; --ring: rgba(11,11,11,0.08);
+  --accent: #2a78d6; --accent-2: #4a3aa7;
   --good: #006300; --bad: #d03b3b;
+  --shadow: 0 1px 2px rgba(11,11,11,0.04), 0 6px 20px rgba(11,11,11,0.05);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --page: #0d0d0d; --surface: #1a1a19;
+    --page: #0d0d0d; --surface: #1a1a19; --inset: #141413;
     --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-    --hairline: #2c2c2a; --ring: rgba(255,255,255,0.10);
-    --accent: #3987e5; --accent-soft: #104281;
-    --good: #0ca30c; --bad: #d03b3b;
+    --hairline: #2c2c2a; --ring: rgba(255,255,255,0.09);
+    --accent: #3987e5; --accent-2: #9085e9;
+    --good: #0ca30c; --bad: #e66767;
+    --shadow: none;
   }
 }
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 body {
   margin: 0; background: var(--page); color: var(--ink);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.5; -webkit-font-smoothing: antialiased;
 }
-.wrap { max-width: 1100px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
-.eyebrow {
-  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--accent); margin: 0 0 0.4rem;
+body::before {
+  content: ""; display: block; height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
 }
-h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
-.stamp { color: var(--muted); font-size: 0.85rem; margin: 0 0 2rem; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin-bottom: 2.25rem; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+.masthead {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 2.25rem;
+}
+.brand { display: flex; align-items: center; gap: 0.65rem; }
+.mark {
+  width: 34px; height: 34px; border-radius: 9px; flex: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff; font-weight: 750; font-size: 0.82rem; letter-spacing: 0.02em;
+  display: flex; align-items: center; justify-content: center;
+}
+.brand .name { font-weight: 700; letter-spacing: -0.01em; }
+.brand .tag { display: block; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.run-pill {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  font-size: 0.76rem; font-weight: 550; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--ring);
+  border-radius: 999px; padding: 0.3rem 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.run-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); flex: none; }
+h1 { font-size: 2.1rem; margin: 0 0 0.2rem; letter-spacing: -0.03em; font-weight: 750; }
+.dateline { color: var(--muted); font-size: 0.92rem; margin: 0 0 2rem; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.8rem; margin-bottom: 2.5rem; }
 .tile {
-  background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
-  padding: 0.9rem 1rem 0.8rem;
-}
-.tile .k { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.tile .v { font-size: 1.75rem; font-weight: 650; letter-spacing: -0.02em; margin-top: 0.1rem; }
-.tile .v small { font-size: 0.95rem; font-weight: 500; color: var(--ink-2); }
-.card {
   background: var(--surface); border: 1px solid var(--ring); border-radius: 12px;
-  padding: 1.25rem 1.4rem 1.1rem; margin-bottom: 1.5rem;
+  padding: 0.95rem 1.05rem 0.85rem; box-shadow: var(--shadow);
 }
-.card > h2 { font-size: 1.05rem; margin: 0 0 0.15rem; letter-spacing: -0.01em; }
-.card > .sub { color: var(--muted); font-size: 0.82rem; margin: 0 0 0.9rem; }
+.tile .k { font-size: 0.68rem; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.tile .v { font-size: 1.85rem; font-weight: 700; letter-spacing: -0.03em; margin-top: 0.15rem; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 0.9rem; font-weight: 500; color: var(--ink-2); letter-spacing: 0; }
+.tile.hero { border-color: color-mix(in srgb, var(--accent) 35%, var(--ring)); }
+.tile.hero .v { color: var(--accent); }
+.card {
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 14px;
+  padding: 1.35rem 1.5rem 1.15rem; margin-bottom: 1.5rem; box-shadow: var(--shadow);
+}
+.card > h2, .card h2 {
+  display: flex; align-items: center; gap: 0.55rem;
+  font-size: 1.02rem; margin: 0 0 0.2rem; letter-spacing: -0.01em; font-weight: 700;
+}
+.card h2::before {
+  content: ""; width: 8px; height: 8px; border-radius: 2.5px; flex: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+.card > .sub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
 @media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; } }
 .grid2 .card { margin-bottom: 0; }
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; margin: 0 -0.4rem; }
 table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
 th {
-  text-align: left; color: var(--muted); font-size: 0.7rem; font-weight: 600;
-  letter-spacing: 0.08em; text-transform: uppercase;
-  padding: 0.35rem 0.75rem 0.45rem; border-bottom: 1px solid var(--hairline);
+  text-align: left; color: var(--muted); font-size: 0.67rem; font-weight: 650;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 0.35rem 0.6rem 0.5rem; border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
 }
-td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--hairline); white-space: nowrap; vertical-align: middle; }
-tr:last-child td { border-bottom: none; }
-tbody tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-td.strong { font-weight: 600; }
-.pos { color: var(--good); font-weight: 600; }
-.neg { color: var(--bad); font-weight: 600; }
-.chip {
-  display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px;
-  font-size: 0.75rem; font-weight: 600; border: 1px solid var(--ring);
-  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--ink);
+td {
+  padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--hairline);
+  white-space: nowrap; vertical-align: middle;
+  transition: background 0.12s ease;
 }
-.bar { display: inline-block; vertical-align: middle; height: 4px; border-radius: 2px; background: var(--accent); margin-left: 0.55rem; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.strong { font-weight: 650; }
+td.tc { color: var(--ink-2); font-size: 0.8rem; letter-spacing: 0.03em; }
+.pos { color: var(--good); font-weight: 650; }
+.neg { color: var(--bad); font-weight: 650; }
+.chip {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.12rem 0.6rem 0.12rem 0.5rem; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 650;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--ink);
+}
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+.chip small { font-weight: 500; color: var(--ink-2); }
+.bar {
+  display: inline-block; vertical-align: middle; height: 4px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)); margin-left: 0.55rem;
+}
 .unavailable {
-  border: 1px dashed var(--hairline); border-radius: 8px; color: var(--ink-2);
-  padding: 0.8rem 1rem; font-size: 0.88rem;
+  border: 1px dashed var(--hairline); border-radius: 10px; color: var(--ink-2);
+  background: var(--inset); padding: 0.85rem 1.1rem; font-size: 0.88rem;
 }
 .math-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
-.fx {
-  border: 1px solid var(--ring); border-radius: 10px; padding: 0.9rem 1rem;
+.fx { background: var(--inset); border: 1px solid var(--ring); border-radius: 12px; padding: 1rem 1.1rem; }
+.fx h3 {
+  font-size: 0.7rem; margin: 0 0 0.6rem; color: var(--muted); font-weight: 650;
+  letter-spacing: 0.1em; text-transform: uppercase;
 }
-.fx h3 { font-size: 0.82rem; margin: 0 0 0.5rem; color: var(--ink-2); font-weight: 600; }
-.fx math { display: block; font-size: 1.05rem; margin: 0.25rem 0 0.55rem; }
-.fx p { font-size: 0.8rem; color: var(--muted); margin: 0; }
-footer { margin-top: 2.5rem; color: var(--muted); font-size: 0.8rem; }
-#gate { max-width: 340px; margin: 22vh auto 0; text-align: center; padding: 0 1.25rem; }
-#gate h2 { letter-spacing: -0.01em; }
+.fx math { display: block; font-size: 1.08rem; margin: 0.25rem 0 0.65rem; }
+.fx p { font-size: 0.8rem; color: var(--muted); margin: 0; line-height: 1.55; }
+footer {
+  margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--hairline);
+  color: var(--muted); font-size: 0.8rem; display: flex; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap;
+}
+#gate { max-width: 360px; margin: 20vh auto 0; padding: 0 1.25rem; text-align: center; }
+#gate .panel {
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 16px;
+  box-shadow: var(--shadow); padding: 2rem 1.75rem 1.75rem;
+}
+#gate .mark { margin: 0 auto 1rem; width: 42px; height: 42px; font-size: 0.95rem; }
+#gate h2 { margin: 0 0 0.25rem; letter-spacing: -0.01em; }
+#gate .hint { color: var(--muted); font-size: 0.84rem; margin: 0 0 1.1rem; }
 #gate input {
-  display: block; width: 100%; padding: 0.6rem 0.75rem; margin: 0.9rem 0;
-  font-size: 1rem; border: 1px solid var(--ring); border-radius: 8px;
-  background: var(--surface); color: var(--ink);
+  display: block; width: 100%; padding: 0.65rem 0.8rem; margin: 0 0 0.8rem;
+  font-size: 1rem; border: 1px solid var(--hairline); border-radius: 10px;
+  background: var(--page); color: var(--ink); outline: none; text-align: center;
 }
+#gate input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
 #gate button {
-  padding: 0.55rem 1.6rem; font-size: 0.95rem; font-weight: 600; cursor: pointer;
-  border: none; border-radius: 8px; background: var(--accent); color: #fff;
+  width: 100%; padding: 0.6rem 1.6rem; font-size: 0.95rem; font-weight: 650; cursor: pointer;
+  border: none; border-radius: 10px; color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
 }
-#gate-error { color: var(--bad); display: none; font-size: 0.85rem; }
+#gate-error { color: var(--bad); display: none; font-size: 0.85rem; margin: 0.75rem 0 0; }
 """
 
 
@@ -176,15 +234,19 @@ def _table(headers: list[tuple[str, bool]], rows: list[list[str]]) -> str:
 
 def _render_tiles(result: DailyScanResult, picks: list[Pick] | None) -> str:
     tiles = [
-        ("Games today", f"{result.n_games}"),
-        ("Players modeled", f"{result.n_players_considered - result.n_errors}"),
-        ("Starting pitchers", f"{len(result.pitchers)}"),
-        ("Batters in pool", f"{len(result.batters)}"),
+        ("Games today", f"{result.n_games}", ""),
+        ("Players modeled", f"{result.n_players_considered - result.n_errors}", ""),
+        ("Starting pitchers", f"{len(result.pitchers)}", ""),
+        ("Batters in pool", f"{len(result.batters)}", ""),
     ]
     if picks:
         best = max(picks, key=lambda p: p.edge)
-        tiles.append(("Best model edge", f"{best.edge:+.1%} <small>{_esc(best.away_team)}@{_esc(best.home_team)}</small>"))
-    cells = "".join(f'<div class="tile"><div class="k">{_esc(k)}</div><div class="v">{v}</div></div>' for k, v in tiles)
+        tiles.append(
+            ("Best model edge", f"{best.edge:+.1%} <small>{_esc(best.away_team)}@{_esc(best.home_team)}</small>", " hero")
+        )
+    cells = "".join(
+        f'<div class="tile{cls}"><div class="k">{_esc(k)}</div><div class="v">{v}</div></div>' for k, v, cls in tiles
+    )
     return f'<div class="tiles">{cells}</div>'
 
 
@@ -212,9 +274,9 @@ def _render_picks_section(picks: list[Pick] | None, error: str | None) -> str:
         gap = p.side_price - fair  # positive: book pays better than the model's fair price
         gap_cls = "pos" if gap >= 0 else "neg"
         rows.append([
-            f'<td>{_esc(_fmt_time_et(p.commence_time))}</td>',
+            f'<td class="tc">{_esc(_fmt_time_et(p.commence_time))}</td>',
             f'<td>{_esc(p.away_team)} @ {_esc(p.home_team)}</td>',
-            f'<td class="strong"><span class="chip">{_esc(pick_team)} {_esc(p.side)}</span></td>',
+            f'<td class="strong"><span class="chip">{_esc(pick_team)}&nbsp;<small>{_esc(p.side)}</small></span></td>',
             f'<td class="num strong">{_fmt_line(p.side_price)}</td>',
             f'<td class="num">{_fmt_line(fair)}</td>',
             f'<td class="num {gap_cls}">{gap:+.0f}</td>',
@@ -243,8 +305,8 @@ def _render_props_section(result: DailyScanResult) -> str:
             metric = fmt(key(e)) if with_break_even else f"{fmt(key(e))}{_bar(key(e), max_v)}"
             cells = [
                 f"<td>{_esc(e.name)}</td>",
-                f"<td>{_esc(e.team)}</td>",
-                f"<td>{_esc(e.opponent)}</td>",
+                f'<td class="tc">{_esc(e.team)}</td>',
+                f'<td class="tc">{_esc(e.opponent)}</td>',
                 f'<td class="num strong">{metric}</td>',
             ]
             if with_break_even:
@@ -258,8 +320,8 @@ def _render_props_section(result: DailyScanResult) -> str:
     pitcher_rows = [
         [
             f"<td>{_esc(e.name)}</td>",
-            f"<td>{_esc(e.team)}</td>",
-            f"<td>{_esc(e.opponent)}</td>",
+            f'<td class="tc">{_esc(e.team)}</td>',
+            f'<td class="tc">{_esc(e.opponent)}</td>',
             f'<td class="num strong">{e.projection.projected_strikeouts:.2f}{_bar(e.projection.projected_strikeouts, max_k)}</td>',
             f'<td class="num">{e.projection.n_appearances}</td>',
         ]
@@ -395,12 +457,16 @@ def _wrap_with_password_gate(body_html: str, password_hash: str) -> str:
     """
     return f"""
 <div id="gate">
-  <h2>Enter password</h2>
-  <form id="gate-form">
-    <input type="password" id="gate-input" autocomplete="off" autofocus>
-    <button type="submit">Enter</button>
-    <p id="gate-error">Incorrect password.</p>
-  </form>
+  <div class="panel">
+    <div class="mark">SBA</div>
+    <h2>Private report</h2>
+    <p class="hint">Enter the password to view today's model output.</p>
+    <form id="gate-form">
+      <input type="password" id="gate-input" autocomplete="off" autofocus>
+      <button type="submit">Unlock</button>
+      <p id="gate-error">Incorrect password.</p>
+    </form>
+  </div>
 </div>
 <div id="protected" style="display:none">
 {body_html}
@@ -443,18 +509,29 @@ def generate_report(output_path: Path) -> None:
     except (OddsAPIError, FileNotFoundError) as e:
         picks_error = str(e)
 
-    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    now_utc = datetime.now(timezone.utc)
+    generated_at = now_utc.strftime("%Y-%m-%d %H:%M UTC")
+    dateline = now_utc.astimezone(EASTERN).strftime("%A, %B %-d, %Y")
 
     body_content = f"""
 <div class="wrap">
-<p class="eyebrow">SBA &middot; Quantitative MLB Model</p>
+<div class="masthead">
+  <div class="brand">
+    <div class="mark">SBA</div>
+    <div><span class="name">Sports Betting Analytics</span><span class="tag">Quantitative MLB Model</span></div>
+  </div>
+  <div class="run-pill"><span class="dot"></span>Model run {generated_at}</div>
+</div>
 <h1>Daily edge report</h1>
-<p class="stamp">Generated {generated_at} &middot; snapshot of the last scheduled run</p>
+<p class="dateline">{dateline} &middot; snapshot of the last scheduled run</p>
 {_render_tiles(scan_result, picks)}
 {_render_picks_section(picks, picks_error)}
 {_render_props_section(scan_result)}
 {_render_methodology()}
-<footer>Logistic moneyline model &middot; EWM prop projections &middot; consensus devigged across surveyed books</footer>
+<footer>
+  <span>Logistic moneyline model &middot; EWM prop projections &middot; consensus devigged across surveyed books</span>
+  <span>SBA &middot; {now_utc.year}</span>
+</footer>
 </div>
 """
 
