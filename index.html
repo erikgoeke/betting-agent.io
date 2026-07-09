@@ -3,49 +3,100 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>sba -- MLB betting analysis</title>
+<title>SBA &middot; Daily edge report</title>
 <style>
-:root { color-scheme: light dark; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  max-width: 960px; margin: 2rem auto; padding: 0 1rem;
-  line-height: 1.5; color: #1a1a1a; background: #fff;
+:root {
+  color-scheme: light dark;
+  --page: #f9f9f7; --surface: #fcfcfb;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --hairline: #e1e0d9; --ring: rgba(11,11,11,0.10);
+  --accent: #2a78d6; --accent-soft: #cde2fb;
+  --good: #006300; --bad: #d03b3b;
 }
 @media (prefers-color-scheme: dark) {
-  body { color: #e8e8e8; background: #121212; }
-  table { border-color: #333 !important; }
-  th { background: #1e1e1e !important; }
-  tr:nth-child(even) td { background: #191919 !important; }
-  .disclaimer, .unavailable { background: #241f10 !important; color: #d8c98a !important; }
-  a { color: #7ab8ff; }
+  :root {
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --hairline: #2c2c2a; --ring: rgba(255,255,255,0.10);
+    --accent: #3987e5; --accent-soft: #104281;
+    --good: #0ca30c; --bad: #d03b3b;
+  }
 }
-h1 { margin-bottom: 0.2rem; }
-.meta { color: #777; font-size: 0.9rem; margin-bottom: 2rem; }
-h2 { margin-top: 2.5rem; border-bottom: 2px solid #ccc; padding-bottom: 0.3rem; }
-.table-wrap { overflow-x: auto; margin: 1rem 0; }
-table { border-collapse: collapse; width: 100%; border: 1px solid #ddd; }
-th, td { text-align: left; padding: 0.4rem 0.7rem; border-bottom: 1px solid #ddd; white-space: nowrap; }
-th { background: #f5f5f5; }
-tr:nth-child(even) td { background: #fafafa; }
-.disclaimer, .unavailable {
-  background: #fff8e1; color: #6b5900; border-radius: 6px;
-  padding: 0.8rem 1rem; font-size: 0.9rem; margin: 1rem 0;
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5; -webkit-font-smoothing: antialiased;
 }
-footer { margin-top: 3rem; color: #888; font-size: 0.85rem; }
-#gate {
-  max-width: 320px; margin: 6rem auto; text-align: center;
+.wrap { max-width: 1100px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+.eyebrow {
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--accent); margin: 0 0 0.4rem;
 }
+h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+.stamp { color: var(--muted); font-size: 0.85rem; margin: 0 0 2rem; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin-bottom: 2.25rem; }
+.tile {
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+  padding: 0.9rem 1rem 0.8rem;
+}
+.tile .k { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.tile .v { font-size: 1.75rem; font-weight: 650; letter-spacing: -0.02em; margin-top: 0.1rem; }
+.tile .v small { font-size: 0.95rem; font-weight: 500; color: var(--ink-2); }
+.card {
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 12px;
+  padding: 1.25rem 1.4rem 1.1rem; margin-bottom: 1.5rem;
+}
+.card > h2 { font-size: 1.05rem; margin: 0 0 0.15rem; letter-spacing: -0.01em; }
+.card > .sub { color: var(--muted); font-size: 0.82rem; margin: 0 0 0.9rem; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
+@media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; } }
+.grid2 .card { margin-bottom: 0; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th {
+  text-align: left; color: var(--muted); font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 0.35rem 0.75rem 0.45rem; border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--hairline); white-space: nowrap; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.strong { font-weight: 600; }
+.pos { color: var(--good); font-weight: 600; }
+.neg { color: var(--bad); font-weight: 600; }
+.chip {
+  display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 600; border: 1px solid var(--ring);
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--ink);
+}
+.bar { display: inline-block; vertical-align: middle; height: 4px; border-radius: 2px; background: var(--accent); margin-left: 0.55rem; }
+.unavailable {
+  border: 1px dashed var(--hairline); border-radius: 8px; color: var(--ink-2);
+  padding: 0.8rem 1rem; font-size: 0.88rem;
+}
+.math-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+.fx {
+  border: 1px solid var(--ring); border-radius: 10px; padding: 0.9rem 1rem;
+}
+.fx h3 { font-size: 0.82rem; margin: 0 0 0.5rem; color: var(--ink-2); font-weight: 600; }
+.fx math { display: block; font-size: 1.05rem; margin: 0.25rem 0 0.55rem; }
+.fx p { font-size: 0.8rem; color: var(--muted); margin: 0; }
+footer { margin-top: 2.5rem; color: var(--muted); font-size: 0.8rem; }
+#gate { max-width: 340px; margin: 22vh auto 0; text-align: center; padding: 0 1.25rem; }
+#gate h2 { letter-spacing: -0.01em; }
 #gate input {
-  display: block; width: 100%; box-sizing: border-box; padding: 0.5rem;
-  margin: 0.75rem 0; font-size: 1rem;
+  display: block; width: 100%; padding: 0.6rem 0.75rem; margin: 0.9rem 0;
+  font-size: 1rem; border: 1px solid var(--ring); border-radius: 8px;
+  background: var(--surface); color: var(--ink);
 }
 #gate button {
-  padding: 0.5rem 1.5rem; font-size: 1rem; cursor: pointer;
+  padding: 0.55rem 1.6rem; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+  border: none; border-radius: 8px; background: var(--accent); color: #fff;
 }
-#gate-error { color: #b00020; display: none; }
-@media (prefers-color-scheme: dark) {
-  #gate-error { color: #ff6b6b; }
-}
+#gate-error { color: var(--bad); display: none; font-size: 0.85rem; }
 </style>
 </head>
 <body>
@@ -60,25 +111,55 @@ footer { margin-top: 3rem; color: #888; font-size: 0.85rem; }
 </div>
 <div id="protected" style="display:none">
 
-<h1>sba -- MLB betting analysis</h1>
-<p class="meta">Generated at 2026-07-09 21:04 UTC. Regenerated on a schedule -- this is a snapshot, not live data.</p>
-<div class="disclaimer">Informational only, not financial advice. Confirm sports betting is legal in your jurisdiction and gamble responsibly. Prop projections are a recency-weighted average of each player's own recent games, not compared to any live line (player props aren't on the free Odds API tier). Batters come from each team's recently active hitting pool, not a confirmed lineup.</div>
-<h2>Moneyline picks</h2><p class="unavailable">Picks unavailable: Odds API request failed (401): {&quot;message&quot;:&quot;API key is not valid. Get an API key at https://the-odds-api.com&quot;,&quot;error_code&quot;:&quot;INVALID_KEY&quot;,&quot;details_url&quot;:&quot;https://the-odds-api.com/liveapi/guides/v4/api-error-codes.html#invalid-key&quot;}
-</p>
-
-<h2>Today's prop projections</h2>
-<p class="meta">13 games, 331 players considered,
-1 skipped.</p>
-<h3>Top pitcher strikeout projections</h3>
-<div class="table-wrap"><table><thead><tr><th>Pitcher</th><th>Team</th><th>Opp</th><th>Proj. Ks</th><th>Appearances</th></tr></thead><tbody><tr><td>Jesús Luzardo</td><td>PHI</td><td>CIN</td><td>8.15</td><td>12</td></tr><tr><td>Bryce Miller</td><td>SEA</td><td>MIA</td><td>8.06</td><td>9</td></tr><tr><td>Nathan Eovaldi</td><td>TEX</td><td>LAA</td><td>7.82</td><td>12</td></tr><tr><td>Logan Henderson</td><td>MIL</td><td>STL</td><td>6.55</td><td>9</td></tr><tr><td>Gavin Williams</td><td>CLE</td><td>MIN</td><td>6.12</td><td>12</td></tr><tr><td>Reid Detmers</td><td>LAA</td><td>TEX</td><td>6.02</td><td>12</td></tr><tr><td>Brady Singer</td><td>CIN</td><td>PHI</td><td>5.66</td><td>12</td></tr><tr><td>Michael Wacha</td><td>KCR</td><td>NYM</td><td>5.45</td><td>12</td></tr><tr><td>Drew Rasmussen</td><td>TBR</td><td>NYY</td><td>5.11</td><td>12</td></tr><tr><td>Trevor Rogers</td><td>BAL</td><td>CHC</td><td>4.70</td><td>12</td></tr></tbody></table></div>
-<h3>Top batter hit-probability projections</h3>
-<div class="table-wrap"><table><thead><tr><th>Batter</th><th>Team</th><th>Opp</th><th>Hit %</th><th>Games</th></tr></thead><tbody><tr><td>Joshua Kuroda-Grauer</td><td>ATH</td><td>DET</td><td>93.2%</td><td>8</td></tr><tr><td>Brice Turang</td><td>MIL</td><td>STL</td><td>92.9%</td><td>20</td></tr><tr><td>Otto Lopez</td><td>MIA</td><td>SEA</td><td>92.8%</td><td>20</td></tr><tr><td>Romy Gonzalez</td><td>BOS</td><td>CHW</td><td>92.8%</td><td>7</td></tr><tr><td>Heliot Ramos</td><td>SFG</td><td>COL</td><td>90.8%</td><td>20</td></tr><tr><td>Pete Crow-Armstrong</td><td>CHC</td><td>BAL</td><td>90.8%</td><td>20</td></tr><tr><td>Chase DeLauter</td><td>CLE</td><td>MIN</td><td>89.4%</td><td>20</td></tr><tr><td>Carson Benge</td><td>NYM</td><td>KCR</td><td>89.4%</td><td>20</td></tr><tr><td>Brandon Lowe</td><td>PIT</td><td>ATL</td><td>89.2%</td><td>20</td></tr><tr><td>Michael Harris II</td><td>ATL</td><td>PIT</td><td>89.1%</td><td>20</td></tr></tbody></table></div>
-<h3>Top batter HR-probability projections</h3>
-<div class="table-wrap"><table><thead><tr><th>Batter</th><th>Team</th><th>Opp</th><th>HR %</th><th>Games</th></tr></thead><tbody><tr><td>A.J. Ewing</td><td>NYM</td><td>KCR</td><td>46.9%</td><td>20</td></tr><tr><td>Mike Trout</td><td>LAA</td><td>TEX</td><td>46.2%</td><td>20</td></tr><tr><td>Kyle Stowers</td><td>MIA</td><td>SEA</td><td>42.8%</td><td>20</td></tr><tr><td>Ben Rice</td><td>NYY</td><td>TBR</td><td>40.1%</td><td>20</td></tr><tr><td>Heriberto Hernández</td><td>MIA</td><td>SEA</td><td>39.1%</td><td>20</td></tr><tr><td>Kyle Schwarber</td><td>PHI</td><td>CIN</td><td>38.8%</td><td>20</td></tr><tr><td>Pete Crow-Armstrong</td><td>CHC</td><td>BAL</td><td>36.6%</td><td>20</td></tr><tr><td>Kyle Karros</td><td>COL</td><td>SFG</td><td>35.7%</td><td>20</td></tr><tr><td>Juan Soto</td><td>NYM</td><td>KCR</td><td>35.1%</td><td>20</td></tr><tr><td>Rhys Hoskins</td><td>CLE</td><td>MIN</td><td>34.6%</td><td>20</td></tr></tbody></table></div>
-<h3>Top batter total-bases projections</h3>
-<div class="table-wrap"><table><thead><tr><th>Batter</th><th>Team</th><th>Opp</th><th>Proj. TB</th><th>Games</th></tr></thead><tbody><tr><td>Otto Lopez</td><td>MIA</td><td>SEA</td><td>3.53</td><td>20</td></tr><tr><td>Pete Crow-Armstrong</td><td>CHC</td><td>BAL</td><td>3.35</td><td>20</td></tr><tr><td>Ryan O&#x27;Hearn</td><td>PIT</td><td>ATL</td><td>3.22</td><td>20</td></tr><tr><td>Kyle Stowers</td><td>MIA</td><td>SEA</td><td>3.21</td><td>20</td></tr><tr><td>Kody Clemens</td><td>MIN</td><td>CLE</td><td>3.10</td><td>20</td></tr><tr><td>Sal Stewart</td><td>CIN</td><td>PHI</td><td>3.08</td><td>20</td></tr><tr><td>Heriberto Hernández</td><td>MIA</td><td>SEA</td><td>3.03</td><td>20</td></tr><tr><td>A.J. Ewing</td><td>NYM</td><td>KCR</td><td>3.02</td><td>20</td></tr><tr><td>Heliot Ramos</td><td>SFG</td><td>COL</td><td>2.93</td><td>20</td></tr><tr><td>Tyler Tolbert</td><td>KCR</td><td>NYM</td><td>2.76</td><td>20</td></tr></tbody></table></div>
-
-<footer>Built with <a href="https://github.com">sba</a>, a research tool -- not an autonomous bot, does not place bets.</footer>
+<div class="wrap">
+<p class="eyebrow">SBA &middot; Quantitative MLB Model</p>
+<h1>Daily edge report</h1>
+<p class="stamp">Generated 2026-07-09 21:26 UTC &middot; snapshot of the last scheduled run</p>
+<div class="tiles"><div class="tile"><div class="k">Games today</div><div class="v">13</div></div><div class="tile"><div class="k">Players modeled</div><div class="v">330</div></div><div class="tile"><div class="k">Starting pitchers</div><div class="v">25</div></div><div class="tile"><div class="k">Batters in pool</div><div class="v">305</div></div><div class="tile"><div class="k">Best model edge</div><div class="v">+17.1% <small>NYY@WSN</small></div></div></div>
+<div class="card"><h2>Moneyline &mdash; model vs. market</h2><p class="sub">Fair line is the no-vig price implied by the model probability; book line is the best price currently posted across surveyed sportsbooks. Edge is the model&ndash;market probability gap on the picked side.</p><div class="table-wrap"><table><thead><tr><th>Time</th><th>Matchup</th><th>Pick</th><th class="num">Book line</th><th class="num">Fair line</th><th class="num">Line gap</th><th class="num">Model</th><th class="num">Market</th><th class="num">Edge</th><th class="num">¼-Kelly</th><th class="num">Books</th></tr></thead><tbody><tr><td>6:46 PM ET</td><td>NYY @ WSN</td><td class="strong"><span class="chip">WSN home</span></td><td class="num strong">+136</td><td class="num">-141</td><td class="num pos">+277</td><td class="num">58.6%</td><td class="num">41.5%</td><td class="num"><span class="pos">+17.1%</span><span class="bar" style="width:44px"></span></td><td class="num">7.0%</td><td class="num">5</td></tr><tr><td>8:16 PM ET</td><td>ATL @ STL</td><td class="strong"><span class="chip">STL home</span></td><td class="num strong">+142</td><td class="num">-129</td><td class="num pos">+271</td><td class="num">56.4%</td><td class="num">40.3%</td><td class="num"><span class="pos">+16.0%</span><span class="bar" style="width:41px"></span></td><td class="num">6.4%</td><td class="num">5</td></tr><tr><td>7:11 PM ET</td><td>PHI @ CIN</td><td class="strong"><span class="chip">CIN home</span></td><td class="num strong">+145</td><td class="num">-105</td><td class="num pos">+250</td><td class="num">51.3%</td><td class="num">39.9%</td><td class="num"><span class="pos">+11.4%</span><span class="bar" style="width:29px"></span></td><td class="num">4.4%</td><td class="num">9</td></tr><tr><td>6:41 PM ET</td><td>SEA @ MIA</td><td class="strong"><span class="chip">MIA home</span></td><td class="num strong">+112</td><td class="num">-130</td><td class="num pos">+242</td><td class="num">56.5%</td><td class="num">46.2%</td><td class="num"><span class="pos">+10.3%</span><span class="bar" style="width:27px"></span></td><td class="num">4.4%</td><td class="num">9</td></tr><tr><td>7:16 PM ET</td><td>BOS @ NYM</td><td class="strong"><span class="chip">BOS away</span></td><td class="num strong">+116</td><td class="num">-123</td><td class="num pos">+239</td><td class="num">55.2%</td><td class="num">45.0%</td><td class="num"><span class="pos">+10.1%</span><span class="bar" style="width:26px"></span></td><td class="num">4.1%</td><td class="num">5</td></tr><tr><td>7:11 PM ET</td><td>CLE @ MIA</td><td class="strong"><span class="chip">MIA home</span></td><td class="num strong">-105</td><td class="num">-144</td><td class="num pos">+39</td><td class="num">59.0%</td><td class="num">50.1%</td><td class="num"><span class="pos">+8.9%</span><span class="bar" style="width:23px"></span></td><td class="num">4.0%</td><td class="num">4</td></tr><tr><td>7:46 PM ET</td><td>MIL @ STL</td><td class="strong"><span class="chip">STL home</span></td><td class="num strong">+117</td><td class="num">-116</td><td class="num pos">+233</td><td class="num">53.7%</td><td class="num">45.3%</td><td class="num"><span class="pos">+8.4%</span><span class="bar" style="width:22px"></span></td><td class="num">3.5%</td><td class="num">9</td></tr><tr><td>6:41 PM ET</td><td>ATH @ DET</td><td class="strong"><span class="chip">DET home</span></td><td class="num strong">-124</td><td class="num">-167</td><td class="num pos">+43</td><td class="num">62.6%</td><td class="num">54.3%</td><td class="num"><span class="pos">+8.3%</span><span class="bar" style="width:21px"></span></td><td class="num">4.0%</td><td class="num">9</td></tr><tr><td>7:11 PM ET</td><td>SEA @ TBR</td><td class="strong"><span class="chip">TBR home</span></td><td class="num strong">-108</td><td class="num">-132</td><td class="num pos">+24</td><td class="num">56.8%</td><td class="num">50.4%</td><td class="num"><span class="pos">+6.5%</span><span class="bar" style="width:17px"></span></td><td class="num">2.5%</td><td class="num">5</td></tr><tr><td>9:46 PM ET</td><td>COL @ SFG</td><td class="strong"><span class="chip">COL away</span></td><td class="num strong">+113</td><td class="num">-106</td><td class="num pos">+219</td><td class="num">51.4%</td><td class="num">45.9%</td><td class="num"><span class="pos">+5.5%</span><span class="bar" style="width:14px"></span></td><td class="num">2.1%</td><td class="num">9</td></tr><tr><td>9:41 PM ET</td><td>ARI @ SDP</td><td class="strong"><span class="chip">ARI away</span></td><td class="num strong">+110</td><td class="num">-105</td><td class="num pos">+215</td><td class="num">51.2%</td><td class="num">46.4%</td><td class="num"><span class="pos">+4.9%</span><span class="bar" style="width:13px"></span></td><td class="num">1.7%</td><td class="num">9</td></tr><tr><td>7:11 PM ET</td><td>CHC @ CIN</td><td class="strong"><span class="chip">CHC away</span></td><td class="num strong">-102</td><td class="num">-112</td><td class="num pos">+10</td><td class="num">52.9%</td><td class="num">49.6%</td><td class="num"><span class="pos">+3.2%</span><span class="bar" style="width:8px"></span></td><td class="num">1.2%</td><td class="num">5</td></tr><tr><td>6:41 PM ET</td><td>MIL @ PIT</td><td class="strong"><span class="chip">PIT home</span></td><td class="num strong">-127</td><td class="num">-127</td><td class="num pos">+0</td><td class="num">56.0%</td><td class="num">55.2%</td><td class="num"><span class="pos">+0.8%</span><span class="bar" style="width:2px"></span></td><td class="num">0.0%</td><td class="num">4</td></tr><tr><td>8:06 PM ET</td><td>LAA @ TEX</td><td class="strong"><span class="chip">LAA away</span></td><td class="num strong">+119</td><td class="num">+122</td><td class="num neg">-3</td><td class="num">45.0%</td><td class="num">44.5%</td><td class="num"><span class="pos">+0.5%</span><span class="bar" style="width:2px"></span></td><td class="num">0.0%</td><td class="num">9</td></tr><tr><td>7:06 PM ET</td><td>KCR @ BAL</td><td class="strong"><span class="chip">BAL home</span></td><td class="num strong">-145</td><td class="num">-138</td><td class="num neg">-7</td><td class="num">58.0%</td><td class="num">58.0%</td><td class="num"><span class="pos">+0.1%</span><span class="bar" style="width:2px"></span></td><td class="num">0.0%</td><td class="num">5</td></tr></tbody></table></div></div>
+<div class="grid2"><div class="card"><h2>Pitcher strikeouts</h2><p class="sub">EWM projection over recent appearances</p><div class="table-wrap"><table><thead><tr><th>Pitcher</th><th>Team</th><th>Opp</th><th class="num">Proj. K</th><th class="num">N</th></tr></thead><tbody><tr><td>Jesús Luzardo</td><td>PHI</td><td>CIN</td><td class="num strong">8.15<span class="bar" style="width:44px"></span></td><td class="num">12</td></tr><tr><td>Bryce Miller</td><td>SEA</td><td>MIA</td><td class="num strong">8.06<span class="bar" style="width:44px"></span></td><td class="num">9</td></tr><tr><td>Nathan Eovaldi</td><td>TEX</td><td>LAA</td><td class="num strong">7.82<span class="bar" style="width:42px"></span></td><td class="num">12</td></tr><tr><td>Logan Henderson</td><td>MIL</td><td>STL</td><td class="num strong">6.55<span class="bar" style="width:35px"></span></td><td class="num">9</td></tr><tr><td>Gavin Williams</td><td>CLE</td><td>MIN</td><td class="num strong">6.12<span class="bar" style="width:33px"></span></td><td class="num">12</td></tr><tr><td>Reid Detmers</td><td>LAA</td><td>TEX</td><td class="num strong">6.02<span class="bar" style="width:33px"></span></td><td class="num">12</td></tr><tr><td>Brady Singer</td><td>CIN</td><td>PHI</td><td class="num strong">5.66<span class="bar" style="width:31px"></span></td><td class="num">12</td></tr><tr><td>Michael Wacha</td><td>KCR</td><td>NYM</td><td class="num strong">5.45<span class="bar" style="width:29px"></span></td><td class="num">12</td></tr><tr><td>Drew Rasmussen</td><td>TBR</td><td>NYY</td><td class="num strong">5.11<span class="bar" style="width:28px"></span></td><td class="num">12</td></tr><tr><td>Trevor Rogers</td><td>BAL</td><td>CHC</td><td class="num strong">4.70<span class="bar" style="width:25px"></span></td><td class="num">12</td></tr></tbody></table></div></div><div class="card"><h2>Batter hit probability</h2><p class="sub">EWM of the 1+ hit indicator</p><div class="table-wrap"><table><thead><tr><th>Batter</th><th>Team</th><th>Opp</th><th class="num">P(hit)</th><th class="num">N</th></tr></thead><tbody><tr><td>Joshua Kuroda-Grauer</td><td>ATH</td><td>DET</td><td class="num strong">93.2%<span class="bar" style="width:44px"></span></td><td class="num">8</td></tr><tr><td>Brice Turang</td><td>MIL</td><td>STL</td><td class="num strong">92.9%<span class="bar" style="width:44px"></span></td><td class="num">20</td></tr><tr><td>Otto Lopez</td><td>MIA</td><td>SEA</td><td class="num strong">92.8%<span class="bar" style="width:44px"></span></td><td class="num">20</td></tr><tr><td>Romy Gonzalez</td><td>BOS</td><td>CHW</td><td class="num strong">92.8%<span class="bar" style="width:44px"></span></td><td class="num">7</td></tr><tr><td>Heliot Ramos</td><td>SFG</td><td>COL</td><td class="num strong">90.8%<span class="bar" style="width:43px"></span></td><td class="num">20</td></tr><tr><td>Pete Crow-Armstrong</td><td>CHC</td><td>BAL</td><td class="num strong">90.8%<span class="bar" style="width:43px"></span></td><td class="num">20</td></tr><tr><td>Chase DeLauter</td><td>CLE</td><td>MIN</td><td class="num strong">89.4%<span class="bar" style="width:42px"></span></td><td class="num">20</td></tr><tr><td>Carson Benge</td><td>NYM</td><td>KCR</td><td class="num strong">89.4%<span class="bar" style="width:42px"></span></td><td class="num">20</td></tr><tr><td>Brandon Lowe</td><td>PIT</td><td>ATL</td><td class="num strong">89.2%<span class="bar" style="width:42px"></span></td><td class="num">20</td></tr><tr><td>Michael Harris II</td><td>ATL</td><td>PIT</td><td class="num strong">89.1%<span class="bar" style="width:42px"></span></td><td class="num">20</td></tr></tbody></table></div></div><div class="card"><h2>Batter home-run probability</h2><p class="sub">EWM of the 1+ HR indicator</p><div class="table-wrap"><table><thead><tr><th>Batter</th><th>Team</th><th>Opp</th><th class="num">P(HR)</th><th class="num">N</th></tr></thead><tbody><tr><td>A.J. Ewing</td><td>NYM</td><td>KCR</td><td class="num strong">46.9%<span class="bar" style="width:44px"></span></td><td class="num">20</td></tr><tr><td>Mike Trout</td><td>LAA</td><td>TEX</td><td class="num strong">46.2%<span class="bar" style="width:43px"></span></td><td class="num">20</td></tr><tr><td>Kyle Stowers</td><td>MIA</td><td>SEA</td><td class="num strong">42.8%<span class="bar" style="width:40px"></span></td><td class="num">20</td></tr><tr><td>Ben Rice</td><td>NYY</td><td>TBR</td><td class="num strong">40.1%<span class="bar" style="width:38px"></span></td><td class="num">20</td></tr><tr><td>Heriberto Hernández</td><td>MIA</td><td>SEA</td><td class="num strong">39.1%<span class="bar" style="width:37px"></span></td><td class="num">20</td></tr><tr><td>Kyle Schwarber</td><td>PHI</td><td>CIN</td><td class="num strong">38.8%<span class="bar" style="width:36px"></span></td><td class="num">20</td></tr><tr><td>Pete Crow-Armstrong</td><td>CHC</td><td>BAL</td><td class="num strong">36.6%<span class="bar" style="width:34px"></span></td><td class="num">20</td></tr><tr><td>Kyle Karros</td><td>COL</td><td>SFG</td><td class="num strong">35.7%<span class="bar" style="width:34px"></span></td><td class="num">20</td></tr><tr><td>Juan Soto</td><td>NYM</td><td>KCR</td><td class="num strong">35.1%<span class="bar" style="width:33px"></span></td><td class="num">20</td></tr><tr><td>Rhys Hoskins</td><td>CLE</td><td>MIN</td><td class="num strong">34.6%<span class="bar" style="width:32px"></span></td><td class="num">20</td></tr></tbody></table></div></div><div class="card"><h2>Batter total bases</h2><p class="sub">EWM of per-game total bases</p><div class="table-wrap"><table><thead><tr><th>Batter</th><th>Team</th><th>Opp</th><th class="num">Proj. TB</th><th class="num">N</th></tr></thead><tbody><tr><td>Otto Lopez</td><td>MIA</td><td>SEA</td><td class="num strong">3.53<span class="bar" style="width:44px"></span></td><td class="num">20</td></tr><tr><td>Pete Crow-Armstrong</td><td>CHC</td><td>BAL</td><td class="num strong">3.35<span class="bar" style="width:42px"></span></td><td class="num">20</td></tr><tr><td>Ryan O&#x27;Hearn</td><td>PIT</td><td>ATL</td><td class="num strong">3.22<span class="bar" style="width:40px"></span></td><td class="num">20</td></tr><tr><td>Kyle Stowers</td><td>MIA</td><td>SEA</td><td class="num strong">3.21<span class="bar" style="width:40px"></span></td><td class="num">20</td></tr><tr><td>Kody Clemens</td><td>MIN</td><td>CLE</td><td class="num strong">3.10<span class="bar" style="width:39px"></span></td><td class="num">20</td></tr><tr><td>Sal Stewart</td><td>CIN</td><td>PHI</td><td class="num strong">3.08<span class="bar" style="width:38px"></span></td><td class="num">20</td></tr><tr><td>Heriberto Hernández</td><td>MIA</td><td>SEA</td><td class="num strong">3.03<span class="bar" style="width:38px"></span></td><td class="num">20</td></tr><tr><td>A.J. Ewing</td><td>NYM</td><td>KCR</td><td class="num strong">3.02<span class="bar" style="width:38px"></span></td><td class="num">20</td></tr><tr><td>Heliot Ramos</td><td>SFG</td><td>COL</td><td class="num strong">2.93<span class="bar" style="width:36px"></span></td><td class="num">20</td></tr><tr><td>Tyler Tolbert</td><td>KCR</td><td>NYM</td><td class="num strong">2.76<span class="bar" style="width:34px"></span></td><td class="num">20</td></tr></tbody></table></div></div></div>
+<div class="card"><h2>Methodology</h2><p class="sub">Every number above is produced by these six expressions.</p><div class="math-grid"><div class="fx"><h3>Win-probability model</h3><math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>
+            <mi>P</mi><mo>(</mo><mtext>home</mtext><mo>)</mo><mo>=</mo>
+            <mi>&sigma;</mi><mo>(</mo><msup><mi mathvariant="bold">&beta;</mi><mi>T</mi></msup>
+            <mi mathvariant="bold">x</mi><mo>)</mo><mo>=</mo>
+            <mfrac><mn>1</mn><mrow><mn>1</mn><mo>+</mo>
+            <msup><mi>e</mi><mrow><mo>&minus;</mo><msup><mi mathvariant="bold">&beta;</mi><mi>T</mi></msup>
+            <mi mathvariant="bold">x</mi></mrow></msup></mrow></mfrac>
+            </mrow></math><p>Logistic regression on standardized form differentials x = [&Delta;win%, &Delta;run-diff, &Delta;rest], fit on six seasons of games.</p></div><div class="fx"><h3>Implied probability of an American line</h3><math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>
+            <msub><mi>p</mi><mtext>imp</mtext></msub><mo>=</mo>
+            <mo>{</mo><mtable columnalign="left">
+            <mtr><mtd><mfrac><mn>100</mn><mrow><mi>o</mi><mo>+</mo><mn>100</mn></mrow></mfrac></mtd>
+            <mtd><mi>o</mi><mo>&gt;</mo><mn>0</mn></mtd></mtr>
+            <mtr><mtd><mfrac><mrow><mo>|</mo><mi>o</mi><mo>|</mo></mrow>
+            <mrow><mo>|</mo><mi>o</mi><mo>|</mo><mo>+</mo><mn>100</mn></mrow></mfrac></mtd>
+            <mtd><mi>o</mi><mo>&lt;</mo><mn>0</mn></mtd></mtr>
+            </mtable></mrow></math><p>Raw implied probabilities include the bookmaker's margin (vig), so the two sides sum past 1.</p></div><div class="fx"><h3>Proportional devig</h3><math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>
+            <msub><mi>p</mi><mtext>fair</mtext></msub><mo>=</mo>
+            <mfrac><msub><mi>p</mi><mi>H</mi></msub>
+            <mrow><msub><mi>p</mi><mi>H</mi></msub><mo>+</mo><msub><mi>p</mi><mi>A</mi></msub></mrow></mfrac>
+            </mrow></math><p>Normalizes both sides' implied probabilities to sum to 1, then averages across surveyed books for a consensus market probability.</p></div><div class="fx"><h3>Edge</h3><math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>
+            <mi>&epsilon;</mi><mo>=</mo>
+            <msub><mi>p</mi><mtext>model</mtext></msub><mo>&minus;</mo>
+            <msub><mi>p</mi><mtext>fair</mtext></msub>
+            </mrow></math><p>The model&ndash;market disagreement on the picked side; picks are ranked by &epsilon; descending.</p></div><div class="fx"><h3>Fractional Kelly stake (1/4)</h3><math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>
+            <msup><mi>f</mi><mo>*</mo></msup><mo>=</mo>
+            <mfrac><mrow><mi>b</mi><mi>p</mi><mo>&minus;</mo><mi>q</mi></mrow><mi>b</mi></mfrac>
+            <mo>,</mo><mspace width="0.6em"></mspace>
+            <mi>f</mi><mo>=</mo><mfrac><msup><mi>f</mi><mo>*</mo></msup><mn>4</mn></mfrac>
+            </mrow></math><p>b = decimal odds &minus; 1, p = model win probability, q = 1 &minus; p. Staking f*/4 trades growth for drawdown control.</p></div><div class="fx"><h3>Prop projection (EWM)</h3><math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>
+            <msub><mover><mi>y</mi><mo>^</mo></mover><mi>t</mi></msub><mo>=</mo>
+            <mfrac>
+            <mrow><munderover><mo>&sum;</mo><mrow><mi>i</mi><mo>=</mo><mn>0</mn></mrow><mi>n</mi></munderover>
+            <msup><mrow><mo>(</mo><mn>1</mn><mo>&minus;</mo><mi>&alpha;</mi><mo>)</mo></mrow><mi>i</mi></msup>
+            <msub><mi>y</mi><mrow><mi>t</mi><mo>&minus;</mo><mi>i</mi></mrow></msub></mrow>
+            <mrow><munderover><mo>&sum;</mo><mrow><mi>i</mi><mo>=</mo><mn>0</mn></mrow><mi>n</mi></munderover>
+            <msup><mrow><mo>(</mo><mn>1</mn><mo>&minus;</mo><mi>&alpha;</mi><mo>)</mo></mrow><mi>i</mi></msup></mrow>
+            </mfrac>
+            <mo>,</mo><mspace width="0.6em"></mspace>
+            <mi>&alpha;</mi><mo>=</mo><mfrac><mn>2</mn><mrow><mi>s</mi><mo>+</mo><mn>1</mn></mrow></mfrac>
+            </mrow></math><p>Exponentially-weighted mean of each player's own recent game log (span s = 10 for batters, 6 for pitchers) &mdash; recent form dominates.</p></div></div></div>
+<footer>Logistic moneyline model &middot; EWM prop projections &middot; consensus devigged across surveyed books</footer>
+</div>
 
 </div>
 <script>
