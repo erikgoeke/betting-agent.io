@@ -32,11 +32,36 @@ tr:nth-child(even) td { background: #fafafa; }
   padding: 0.8rem 1rem; font-size: 0.9rem; margin: 1rem 0;
 }
 footer { margin-top: 3rem; color: #888; font-size: 0.85rem; }
+#gate {
+  max-width: 320px; margin: 6rem auto; text-align: center;
+}
+#gate input {
+  display: block; width: 100%; box-sizing: border-box; padding: 0.5rem;
+  margin: 0.75rem 0; font-size: 1rem;
+}
+#gate button {
+  padding: 0.5rem 1.5rem; font-size: 1rem; cursor: pointer;
+}
+#gate-error { color: #b00020; display: none; }
+@media (prefers-color-scheme: dark) {
+  #gate-error { color: #ff6b6b; }
+}
 </style>
 </head>
 <body>
+
+<div id="gate">
+  <h2>Enter password</h2>
+  <form id="gate-form">
+    <input type="password" id="gate-input" autocomplete="off" autofocus>
+    <button type="submit">Enter</button>
+    <p id="gate-error">Incorrect password.</p>
+  </form>
+</div>
+<div id="protected" style="display:none">
+
 <h1>sba -- MLB betting analysis</h1>
-<p class="meta">Generated at 2026-07-09 20:57 UTC. Regenerated on a schedule -- this is a snapshot, not live data.</p>
+<p class="meta">Generated at 2026-07-09 21:04 UTC. Regenerated on a schedule -- this is a snapshot, not live data.</p>
 <div class="disclaimer">Informational only, not financial advice. Confirm sports betting is legal in your jurisdiction and gamble responsibly. Prop projections are a recency-weighted average of each player's own recent games, not compared to any live line (player props aren't on the free Odds API tier). Batters come from each team's recently active hitting pool, not a confirmed lineup.</div>
 <h2>Moneyline picks</h2><p class="unavailable">Picks unavailable: Odds API request failed (401): {&quot;message&quot;:&quot;API key is not valid. Get an API key at https://the-odds-api.com&quot;,&quot;error_code&quot;:&quot;INVALID_KEY&quot;,&quot;details_url&quot;:&quot;https://the-odds-api.com/liveapi/guides/v4/api-error-codes.html#invalid-key&quot;}
 </p>
@@ -54,5 +79,33 @@ footer { margin-top: 3rem; color: #888; font-size: 0.85rem; }
 <div class="table-wrap"><table><thead><tr><th>Batter</th><th>Team</th><th>Opp</th><th>Proj. TB</th><th>Games</th></tr></thead><tbody><tr><td>Otto Lopez</td><td>MIA</td><td>SEA</td><td>3.53</td><td>20</td></tr><tr><td>Pete Crow-Armstrong</td><td>CHC</td><td>BAL</td><td>3.35</td><td>20</td></tr><tr><td>Ryan O&#x27;Hearn</td><td>PIT</td><td>ATL</td><td>3.22</td><td>20</td></tr><tr><td>Kyle Stowers</td><td>MIA</td><td>SEA</td><td>3.21</td><td>20</td></tr><tr><td>Kody Clemens</td><td>MIN</td><td>CLE</td><td>3.10</td><td>20</td></tr><tr><td>Sal Stewart</td><td>CIN</td><td>PHI</td><td>3.08</td><td>20</td></tr><tr><td>Heriberto Hernández</td><td>MIA</td><td>SEA</td><td>3.03</td><td>20</td></tr><tr><td>A.J. Ewing</td><td>NYM</td><td>KCR</td><td>3.02</td><td>20</td></tr><tr><td>Heliot Ramos</td><td>SFG</td><td>COL</td><td>2.93</td><td>20</td></tr><tr><td>Tyler Tolbert</td><td>KCR</td><td>NYM</td><td>2.76</td><td>20</td></tr></tbody></table></div>
 
 <footer>Built with <a href="https://github.com">sba</a>, a research tool -- not an autonomous bot, does not place bets.</footer>
+
+</div>
+<script>
+(function () {
+  var HASH = '7e41b09b209b5846730a6ada3cc81bf2525f98943e6a5ab0eebaf3c0a52bc5fc';
+  function toHex(buf) {
+    return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+  }
+  function unlock() {
+    document.getElementById("gate").style.display = "none";
+    document.getElementById("protected").style.display = "block";
+  }
+  if (sessionStorage.getItem("sba_unlocked") === "1") { unlock(); }
+  document.getElementById("gate-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var value = document.getElementById("gate-input").value;
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)).then(function (buf) {
+      if (toHex(buf) === HASH) {
+        sessionStorage.setItem("sba_unlocked", "1");
+        unlock();
+      } else {
+        document.getElementById("gate-error").style.display = "block";
+      }
+    });
+  });
+})();
+</script>
+
 </body>
 </html>
