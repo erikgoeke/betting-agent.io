@@ -131,11 +131,28 @@ Setup (one-time):
 2. Add your Odds API key as a secret: repo **Settings → Secrets and variables →
    Actions → New repository secret**, name `ODDS_API_KEY`. Without it, the moneyline
    picks section just shows "unavailable" — the props section doesn't need it.
-3. Enable Pages: repo **Settings → Pages → Build and deployment → Source: GitHub
-   Actions**. (This has to be done before the workflow's first run, or its deployment
-   step has nothing to deploy to.)
-4. Trigger it: either wait for the daily schedule, or go to the **Actions** tab →
-   "Publish MLB report to GitHub Pages" → **Run workflow** to trigger it immediately.
+3. (Optional) Add a `PAGE_PASSWORD` secret the same way to put a password prompt in
+   front of the page — see "Password-gating the page" below before relying on this.
+4. Trigger the workflow once: **Actions** tab → "Publish MLB report to GitHub Pages" →
+   **Run workflow**. Its first successful run creates a `gh-pages` branch.
+5. Enable Pages: repo **Settings → Pages → Build and deployment → Source: "Deploy from
+   a branch"** → branch `gh-pages`, folder `/ (root)`. (The `gh-pages` branch won't be
+   selectable here until step 4 has completed successfully at least once.)
+6. After that, it's automatic — the workflow re-runs daily (default: 11:00 UTC) and
+   re-publishes to `gh-pages` each time, or trigger it manually anytime from the
+   Actions tab.
+
+### Password-gating the page
+
+Setting a `PAGE_PASSWORD` secret puts a password prompt in front of the page's
+content. Be clear about what this is and isn't: it's a **client-side visibility gate,
+not real security**. The protected content is still present verbatim in the page's
+HTML source (just hidden with CSS until unlocked) — anyone who views source, or reads
+the raw file on the `gh-pages` branch, sees everything regardless of the password. It
+only keeps casual visitors from landing directly on the content. If you need real
+access control, that means either a private repo (GitHub Pro+, restricted to invited
+GitHub accounts, not a shared password) or hosting elsewhere with actual server-side
+auth — both are bigger changes than this project takes on.
 
 Once it's run successfully, the page is live at `https://{your-username}.github.io/{repo-name}/`.
 

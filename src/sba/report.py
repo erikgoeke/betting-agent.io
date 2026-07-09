@@ -7,7 +7,9 @@ page always reflects the results of the last time it was generated, not a live q
 
 from __future__ import annotations
 
+import hashlib
 import html
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +26,7 @@ from sba.data.odds import OddsAPIError
 from sba.picks import Pick, generate_picks
 
 TOP_N = 10
+PAGE_PASSWORD_ENV = "PAGE_PASSWORD"
 
 PAGE_STYLE = """
 :root { color-scheme: light dark; }
@@ -53,6 +56,20 @@ tr:nth-child(even) td { background: #fafafa; }
   padding: 0.8rem 1rem; font-size: 0.9rem; margin: 1rem 0;
 }
 footer { margin-top: 3rem; color: #888; font-size: 0.85rem; }
+#gate {
+  max-width: 320px; margin: 6rem auto; text-align: center;
+}
+#gate input {
+  display: block; width: 100%; box-sizing: border-box; padding: 0.5rem;
+  margin: 0.75rem 0; font-size: 1rem;
+}
+#gate button {
+  padding: 0.5rem 1.5rem; font-size: 1rem; cursor: pointer;
+}
+#gate-error { color: #b00020; display: none; }
+@media (prefers-color-scheme: dark) {
+  #gate-error { color: #ff6b6b; }
+}
 """
 
 DISCLAIMER = (
@@ -130,6 +147,54 @@ def _render_props_section(result: DailyScanResult) -> str:
 """
 
 
+def _wrap_with_password_gate(body_html: str, password_hash: str) -> str:
+    """Hide `body_html` behind a client-side password prompt.
+
+    NOT real security: the protected content is still present verbatim in the
+    page source (just CSS-hidden), so anyone who views source bypasses this
+    entirely. It only keeps casual visitors from landing on the content directly.
+    Unlock state is remembered per-browser-tab via sessionStorage.
+    """
+    return f"""
+<div id="gate">
+  <h2>Enter password</h2>
+  <form id="gate-form">
+    <input type="password" id="gate-input" autocomplete="off" autofocus>
+    <button type="submit">Enter</button>
+    <p id="gate-error">Incorrect password.</p>
+  </form>
+</div>
+<div id="protected" style="display:none">
+{body_html}
+</div>
+<script>
+(function () {{
+  var HASH = {password_hash!r};
+  function toHex(buf) {{
+    return Array.from(new Uint8Array(buf)).map(function (b) {{ return b.toString(16).padStart(2, "0"); }}).join("");
+  }}
+  function unlock() {{
+    document.getElementById("gate").style.display = "none";
+    document.getElementById("protected").style.display = "block";
+  }}
+  if (sessionStorage.getItem("sba_unlocked") === "1") {{ unlock(); }}
+  document.getElementById("gate-form").addEventListener("submit", function (e) {{
+    e.preventDefault();
+    var value = document.getElementById("gate-input").value;
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)).then(function (buf) {{
+      if (toHex(buf) === HASH) {{
+        sessionStorage.setItem("sba_unlocked", "1");
+        unlock();
+      }} else {{
+        document.getElementById("gate-error").style.display = "block";
+      }}
+    }});
+  }});
+}})();
+</script>
+"""
+
+
 def generate_report(output_path: Path) -> None:
     scan_result = scan_today()
 
@@ -142,6 +207,20 @@ def generate_report(output_path: Path) -> None:
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
+    body_content = f"""
+<h1>sba -- MLB betting analysis</h1>
+<p class="meta">Generated at {generated_at}. Regenerated on a schedule -- this is a snapshot, not live data.</p>
+<div class="disclaimer">{DISCLAIMER}</div>
+{_render_picks_section(picks, picks_error)}
+{_render_props_section(scan_result)}
+<footer>Built with <a href="https://github.com">sba</a>, a research tool -- not an autonomous bot, does not place bets.</footer>
+"""
+
+    password = os.environ.get(PAGE_PASSWORD_ENV)
+    if password:
+        password_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        body_content = _wrap_with_password_gate(body_content, password_hash)
+
     html_doc = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -151,12 +230,7 @@ def generate_report(output_path: Path) -> None:
 <style>{PAGE_STYLE}</style>
 </head>
 <body>
-<h1>sba -- MLB betting analysis</h1>
-<p class="meta">Generated at {generated_at}. Regenerated on a schedule -- this is a snapshot, not live data.</p>
-<div class="disclaimer">{DISCLAIMER}</div>
-{_render_picks_section(picks, picks_error)}
-{_render_props_section(scan_result)}
-<footer>Built with <a href="https://github.com">sba</a>, a research tool -- not an autonomous bot, does not place bets.</footer>
+{body_content}
 </body>
 </html>
 """

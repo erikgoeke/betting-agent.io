@@ -53,6 +53,7 @@ jobs:
       - name: Generate report
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          PAGE_PASSWORD: ${{ secrets.PAGE_PASSWORD }}
         run: uv run sba report --output public/index.html
 
       - name: Deploy to gh-pages branch

@@ -1,3 +1,5 @@
+import hashlib
+
 from sba import daily_scan, report
 from sba.data.odds import OddsAPIError
 from sba.picks import Pick
@@ -97,3 +99,34 @@ def test_generate_report_escapes_html_in_player_names(tmp_path, monkeypatch):
     text = output_path.read_text()
     assert "<script>alert(1)</script>" not in text
     assert "&lt;script&gt;" in text
+
+
+def test_generate_report_without_password_has_no_gate(tmp_path, monkeypatch):
+    monkeypatch.delenv(report.PAGE_PASSWORD_ENV, raising=False)
+    monkeypatch.setattr(report, "scan_today", lambda: _fake_scan_result())
+    monkeypatch.setattr(report, "generate_picks", lambda history_seasons: [_fake_pick()])
+
+    output_path = tmp_path / "index.html"
+    report.generate_report(output_path)
+
+    text = output_path.read_text()
+    assert 'id="gate"' not in text
+    assert "Test Pitcher" in text
+
+
+def test_generate_report_with_password_embeds_hash_not_plaintext(tmp_path, monkeypatch):
+    monkeypatch.setenv(report.PAGE_PASSWORD_ENV, "hunter2")
+    monkeypatch.setattr(report, "scan_today", lambda: _fake_scan_result())
+    monkeypatch.setattr(report, "generate_picks", lambda history_seasons: [_fake_pick()])
+
+    output_path = tmp_path / "index.html"
+    report.generate_report(output_path)
+
+    text = output_path.read_text()
+    assert 'id="gate"' in text
+    assert "hunter2" not in text
+    assert hashlib.sha256(b"hunter2").hexdigest() in text
+    # Content is still present in the source (this is a visibility gate, not real
+    # security) -- just wrapped so it's CSS-hidden until unlocked client-side.
+    assert "Test Pitcher" in text
+    assert 'id="protected" style="display:none"' in text
