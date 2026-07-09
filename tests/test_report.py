@@ -61,9 +61,21 @@ def test_generate_report_includes_picks_and_props(tmp_path, monkeypatch):
     assert "Methodology" in text
     # Fair line for the 58% model probability: -100*0.58/0.42 = -138.
     assert "-138" in text
+    # Break-even lines for the prop probabilities: 75% hit prob -> -300, 12% HR prob -> +733.
+    assert "Break-even" in text
+    assert "-300" in text
+    assert "+733" in text
     # MathML methodology section renders natively, no external scripts.
     assert "<math" in text
     assert "cdn" not in text.lower()
+
+
+def test_break_even_line_handles_degenerate_probabilities():
+    from sba.report import _break_even_line
+
+    assert _break_even_line(1.0) == "&mdash;"
+    assert _break_even_line(0.0) == "&mdash;"
+    assert _break_even_line(0.5) == "+100"
 
 
 def test_generate_report_degrades_gracefully_when_picks_unavailable(tmp_path, monkeypatch):

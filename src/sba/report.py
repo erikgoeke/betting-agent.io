@@ -138,6 +138,17 @@ def _fmt_line(american: float) -> str:
     return f"{american:+.0f}"
 
 
+def _break_even_line(prob: float) -> str:
+    """The model probability as a fair American line -- 'bet yes only at a better price'.
+
+    An EWM of a 0/1 indicator can legitimately hit exactly 0 or 1 (e.g. a hit in
+    every one of the last 20 games), where no finite line exists.
+    """
+    if prob <= 0 or prob >= 1:
+        return "&mdash;"
+    return _fmt_line(prob_to_american(prob))
+
+
 def _fmt_time_et(commence_time: str) -> str:
     try:
         ts = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
@@ -221,19 +232,26 @@ def _props_card(title: str, sub: str, headers: list[tuple[str, bool]], rows: lis
 
 
 def _render_props_section(result: DailyScanResult) -> str:
-    def batter_rows(entries, fmt, key):
+    def batter_rows(entries, fmt, key, with_break_even=False):
         values = [key(e) for e in entries]
         max_v = max(values, default=0)
-        return [
-            [
+        rows = []
+        for e in entries:
+            # The break-even column replaces the data bar: probability values cluster
+            # in a narrow band where a bar reads as noise, and the extra column needs
+            # the width.
+            metric = fmt(key(e)) if with_break_even else f"{fmt(key(e))}{_bar(key(e), max_v)}"
+            cells = [
                 f"<td>{_esc(e.name)}</td>",
                 f"<td>{_esc(e.team)}</td>",
                 f"<td>{_esc(e.opponent)}</td>",
-                f'<td class="num strong">{fmt(key(e))}{_bar(key(e), max_v)}</td>',
-                f'<td class="num">{e.projection.n_games}</td>',
+                f'<td class="num strong">{metric}</td>',
             ]
-            for e in entries
-        ]
+            if with_break_even:
+                cells.append(f'<td class="num">{_break_even_line(key(e))}</td>')
+            cells.append(f'<td class="num">{e.projection.n_games}</td>')
+            rows.append(cells)
+        return rows
 
     pitchers = top_pitchers_by_strikeouts(result, TOP_N)
     max_k = max((e.projection.projected_strikeouts for e in pitchers), default=0)
@@ -259,14 +277,16 @@ def _render_props_section(result: DailyScanResult) -> str:
             pcols + [("Proj. K", True)] + n, pitcher_rows,
         )
         + _props_card(
-            "Batter hit probability", "EWM of the 1+ hit indicator",
-            bcols + [("P(hit)", True)] + n,
-            batter_rows(top_batters_by_hit_prob(result, TOP_N), lambda v: f"{v:.1%}", lambda e: e.projection.hit_prob),
+            "Batter hit probability",
+            "EWM of the 1+ hit indicator &mdash; bet &ldquo;yes&rdquo; only at a better price than break-even",
+            bcols + [("P(hit)", True), ("Break-even", True)] + n,
+            batter_rows(top_batters_by_hit_prob(result, TOP_N), lambda v: f"{v:.1%}", lambda e: e.projection.hit_prob, with_break_even=True),
         )
         + _props_card(
-            "Batter home-run probability", "EWM of the 1+ HR indicator",
-            bcols + [("P(HR)", True)] + n,
-            batter_rows(top_batters_by_hr_prob(result, TOP_N), lambda v: f"{v:.1%}", lambda e: e.projection.hr_prob),
+            "Batter home-run probability",
+            "EWM of the 1+ HR indicator &mdash; bet &ldquo;yes&rdquo; only at a better price than break-even",
+            bcols + [("P(HR)", True), ("Break-even", True)] + n,
+            batter_rows(top_batters_by_hr_prob(result, TOP_N), lambda v: f"{v:.1%}", lambda e: e.projection.hr_prob, with_break_even=True),
         )
         + _props_card(
             "Batter total bases", "EWM of per-game total bases",
