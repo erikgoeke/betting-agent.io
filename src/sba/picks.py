@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -12,6 +14,27 @@ from sba.features import ROLLING_WINDOW, FEATURE_COLUMNS, build_live_features
 from sba.model import load, predict_proba
 
 KELLY_FRACTION = 0.25  # quarter-Kelly: conservative stake sizing
+EASTERN = ZoneInfo("America/New_York")
+
+
+def filter_todays_games(market_games: list[dict], now: datetime | None = None) -> list[dict]:
+    """Keep only games that start on today's date in US Eastern time.
+
+    The odds feed returns every upcoming game from "right now" forward, so a run
+    late in the day would otherwise be dominated by tomorrow's slate (today's
+    already-started games drop out of the feed). MLB schedule days are US-local,
+    so "today" is defined in Eastern time -- matching how the props scan's
+    Baseball-Reference previews page defines the day.
+    """
+    now = now or datetime.now(timezone.utc)
+    today_eastern = now.astimezone(EASTERN).date()
+
+    todays = []
+    for mg in market_games:
+        commence = datetime.fromisoformat(mg["commence_time"].replace("Z", "+00:00"))
+        if commence.astimezone(EASTERN).date() == today_eastern:
+            todays.append(mg)
+    return todays
 
 
 @dataclass
@@ -43,7 +66,7 @@ def generate_picks(*, history_seasons: list[int]) -> list[Pick]:
     pipeline = load()
     games = fetch_seasons(history_seasons)
     raw_odds = fetch_mlb_odds()
-    market_games = games_with_devigged_odds(raw_odds)
+    market_games = filter_todays_games(games_with_devigged_odds(raw_odds))
 
     picks = []
     for mg in market_games:
