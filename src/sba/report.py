@@ -456,6 +456,66 @@ def _render_retrospective_card(day: pd.DataFrame) -> str:
     )
 
 
+def _render_model_update_card(actual: pd.DataFrame, now: datetime, days_offset: int = -1) -> str:
+    """For a past day's *actually logged and graded* picks that lost, show what
+    today's freshly retrained model would have called for the same games.
+
+    This does not rewrite the historical record -- the logged pick and its
+    result stay exactly what they were graded as, since that's a real track
+    record. It's an honest, additive diff against the model that was actually
+    live at the time, using the same odds-free reconstruction as the
+    retrospective card above.
+    """
+    graded = actual.dropna(subset=["won"])
+    losses = graded[graded["won"] == False]  # noqa: E712 -- pandas bool column, not a Python bool
+    if losses.empty:
+        return ""
+
+    day = _model_retrospective(days_offset, now)
+    if day.empty:
+        return ""
+
+    merged = losses.merge(
+        day[["home_team", "away_team", "prob_home"]], on=["home_team", "away_team"], how="inner"
+    )
+    if merged.empty:
+        return ""
+
+    body = []
+    n_now_correct = 0
+    for _, row in merged.iterrows():
+        home_won = row["result"] == "home_win"
+        old_side = row["side"]
+        new_home_favored = row["prob_home"] >= 0.5
+        new_side = "home" if new_home_favored else "away"
+        new_prob = row["prob_home"] if new_home_favored else 1 - row["prob_home"]
+        new_winner = row["home_team"] if new_home_favored else row["away_team"]
+        new_correct = new_home_favored == home_won
+        if new_correct:
+            n_now_correct += 1
+        body.append(
+            f'<tr class="{"won" if new_correct else "lost"}">'
+            f'<td>{_esc(row["away_team"])} @ {_esc(row["home_team"])}</td>'
+            f'<td>{_esc(row["home_team"] if old_side == "home" else row["away_team"])}</td>'
+            f'<td class="strong"><span class="chip">{_esc(new_winner)}&nbsp;<small>{new_side}</small></span></td>'
+            f'<td class="num strong">{new_prob:.1%}</td>'
+            f'<td><span class="result {"pos" if new_correct else "neg"}">'
+            f'{"&#10003; Would now be right" if new_correct else "&#10007; Still wrong"}</span></td>'
+            "</tr>"
+        )
+
+    headers = [("Matchup", False), ("Actual pick", False), ("Current model's pick", False), ("Win prob", True), ("Verdict", False)]
+    head = "".join(f'<th{" class=\"num\"" if num else ""}>{_esc(label)}</th>' for label, num in headers)
+    return (
+        '<div class="card"><h2>Retrained model vs. yesterday\'s losses</h2>'
+        f'<p class="sub">Of yesterday\'s <strong>{len(merged)}</strong> losing pick(s), the model as retrained '
+        f"today would have picked the winner in <strong>{n_now_correct}</strong>. This doesn't change the "
+        "logged record above -- that's what was actually bet -- it's a transparent look at whether recent "
+        "model changes would have helped.</p>"
+        f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div></div>'
+    )
+
+
 def _render_day_tabs(
     yesterday: pd.DataFrame, today: pd.DataFrame, tomorrow: pd.DataFrame,
     error: str | None, now: datetime,
@@ -496,6 +556,11 @@ def _render_day_tabs(
                 _render_picks_section(frame, error if key == "today" else None, now, empty_note=empty)
                 + _render_winners_section(frame, now)
             )
+            if key == "yesterday" and retro_offset is not None:
+                try:
+                    content += _render_model_update_card(frame, now, days_offset=retro_offset)
+                except Exception:
+                    pass
         panels.append(f'<div class="day-panel" id="day-{key}"{"" if key == "today" else " hidden"}>{note}{content}</div>')
     panels = "".join(panels)
     script = """

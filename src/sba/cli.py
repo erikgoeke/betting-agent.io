@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import requests
@@ -10,7 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from sba.backtest import run_backtest
-from sba.config import CURRENT_YEAR, DEFAULT_SEASONS
+from sba.config import CURRENT_YEAR, DEFAULT_SEASONS, MODELS_DIR
 from sba.daily_scan import (
     DEFAULT_MIN_BATTER_PA_LAST_28D,
     scan_today,
@@ -22,13 +23,29 @@ from sba.daily_scan import (
 from sba.data.bref_players import PlayerLookupError
 from sba.data.mlb_stats import fetch_seasons
 from sba.data.odds import OddsAPIError
+from sba.data.starters import backfill_starter_logs, fetch_starts
 from sba.features import build_features
-from sba.model import save
+from sba.importance import shap_importance
+from sba.model import ModelType, save
 from sba.model import train as train_model
 from sba.picks import generate_picks
 from sba.props import project_batter, project_pitcher
 from sba.report import generate_report
+from sba.runline_totals import run_runline_backtest, run_totals_backtest, save_runline, save_totals
+from sba.runline_totals import train_runline as train_runline_model
+from sba.runline_totals import train_totals as train_totals_model
+from sba.runline_totals import build_runline_totals_features
 from sba.tracking import grade_picks, log_picks
+from sba.tuning import tune as tune_model
+
+
+def _tuned_params_path(model_type: str) -> Path:
+    return MODELS_DIR / f"tuned_params_{model_type}.json"
+
+
+def _load_tuned_params(model_type: str) -> dict | None:
+    path = _tuned_params_path(model_type)
+    return json.loads(path.read_text()) if path.exists() else None
 
 app = typer.Typer(help="MLB betting analysis agent -- informational picks only, not financial advice.")
 console = Console()
@@ -44,24 +61,75 @@ def fetch_data_cmd(
     console.print(f"Cached {len(games)} games across seasons {sorted(games['season'].unique().tolist())}")
 
 
+@app.command("fetch-starters")
+def fetch_starters_cmd(
+    seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to fetch starter identity + game logs for."),
+    force_refresh: bool = typer.Option(False, help="Re-download starter identity even if already cached."),
+) -> None:
+    """Fetch starting-pitcher identity (Retrosheet) and each starter's own game log (Baseball-Reference).
+
+    The game-log scrape respects a 3s crawl delay per player-season and is safe to
+    interrupt and rerun -- already-cached player-seasons are skipped.
+    """
+    starts = fetch_starts(seasons, force_refresh=force_refresh)
+    console.print(f"Starter identity resolved for {len(starts)} games across {sorted(starts['season'].unique().tolist())}.")
+    result = backfill_starter_logs(starts, on_progress=console.print)
+    console.print(f"Backfilled {result['n_ok']}/{result['n_total']} starter-seasons ({result['n_errors']} errors).")
+
+
 @app.command()
-def train(seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to train on.")) -> None:
+def train(
+    seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to train on."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    use_tuned_params: bool = typer.Option(
+        True, help="Use saved Optuna params from `sba tune` if available, else the built-in defaults."
+    ),
+) -> None:
     """Train the win-probability model on all cached seasons and save it."""
+    params = _load_tuned_params(model_type) if use_tuned_params else None
     games = fetch_seasons(seasons)
     features = build_features(games)
-    pipeline = train_model(features)
+    pipeline = train_model(features, model_type=model_type, params=params)
     save(pipeline)
-    console.print(f"Trained on {len(features)} games ({sorted(features['season'].unique().tolist())}). Model saved.")
+    console.print(f"Trained {model_type} on {len(features)} games ({sorted(features['season'].unique().tolist())}).")
+    console.print(f"Params: {params if params else 'defaults (no tuned params found)'}")
+
+    table = Table(title="SHAP feature importance (mean |impact| on model output)")
+    table.add_column("feature")
+    table.add_column("importance")
+    for feature, value in shap_importance(pipeline, features).items():
+        table.add_row(feature, f"{value:.4f}")
+    console.print(table)
+
+
+@app.command()
+def tune(
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    valid_season: int = typer.Option(CURRENT_YEAR - 1, help="Season to validate against while tuning."),
+    seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to pull data from."),
+    n_trials: int = typer.Option(50, help="Number of Optuna trials."),
+) -> None:
+    """Search hyperparameters with Optuna and save the result for `sba train` to pick up."""
+    games = fetch_seasons(seasons)
+    features = build_features(games)
+    best_params = tune_model(features, valid_season=valid_season, model_type=model_type, n_trials=n_trials)
+    path = _tuned_params_path(model_type)
+    path.write_text(json.dumps(best_params, indent=2, sort_keys=True))
+    console.print(f"Best {model_type} params (valid_season={valid_season}, {n_trials} trials): {best_params}")
+    console.print(f"Saved to {path}")
 
 
 @app.command()
 def backtest(
     test_season: int = typer.Option(CURRENT_YEAR - 1, help="Season to hold out for evaluation."),
     seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to pull data from."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    use_tuned_params: bool = typer.Option(True, help="Use saved Optuna params from `sba tune` if available."),
 ) -> None:
     """Evaluate model accuracy/calibration on a held-out season (not a betting ROI backtest)."""
+    params = _load_tuned_params(model_type) if use_tuned_params else None
     games = fetch_seasons(seasons)
-    result = run_backtest(games, test_season)
+    result = run_backtest(games, test_season, model_type=model_type, params=params)
     console.print(f"Train seasons: {result.train_seasons} ({result.n_train} games)")
     console.print(f"Test season: {result.test_season} ({result.n_test} games)")
     console.print(f"Accuracy: {result.accuracy:.3f}  Log loss: {result.log_loss:.3f}  Brier: {result.brier_score:.3f}")
@@ -72,6 +140,62 @@ def backtest(
     for _, row in result.calibration.iterrows():
         table.add_row(*[f"{v:.3f}" if isinstance(v, float) else str(v) for v in row])
     console.print(table)
+
+
+@app.command("train-runline")
+def train_runline_cmd(
+    seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to train on."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+) -> None:
+    """Train the run-line model (P(home team wins by 2+ runs), i.e. covers a -1.5 line) and save it."""
+    games = fetch_seasons(seasons)
+    features = build_runline_totals_features(games)
+    pipeline = train_runline_model(features, model_type=model_type)
+    save_runline(pipeline)
+    console.print(f"Trained {model_type} run-line model on {len(features)} games.")
+
+
+@app.command("backtest-runline")
+def backtest_runline_cmd(
+    test_season: int = typer.Option(CURRENT_YEAR - 1, help="Season to hold out for evaluation."),
+    seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to pull data from."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+) -> None:
+    """Evaluate the run-line model's accuracy/calibration on a held-out season."""
+    games = fetch_seasons(seasons)
+    result = run_runline_backtest(games, test_season, model_type=model_type)
+    console.print(f"Train seasons: {result.train_seasons} ({result.n_train} games)")
+    console.print(f"Test season: {result.test_season} ({result.n_test} games)")
+    console.print(f"Accuracy: {result.accuracy:.3f}  Log loss: {result.log_loss:.3f}  Brier: {result.brier_score:.3f}")
+
+
+@app.command("train-totals")
+def train_totals_cmd(
+    seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to train on."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+) -> None:
+    """Train the totals (expected combined runs) regression model and save it."""
+    games = fetch_seasons(seasons)
+    features = build_runline_totals_features(games)
+    pipeline = train_totals_model(features, model_type=model_type)
+    save_totals(pipeline)
+    console.print(f"Trained {model_type} totals model on {len(features)} games.")
+
+
+@app.command("backtest-totals")
+def backtest_totals_cmd(
+    test_season: int = typer.Option(CURRENT_YEAR - 1, help="Season to hold out for evaluation."),
+    seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to pull data from."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+) -> None:
+    """Evaluate the totals model's MAE/RMSE on a held-out season (a point estimate,
+    not a classifier -- there's no historical totals-line data to grade an
+    over/under call against)."""
+    games = fetch_seasons(seasons)
+    result = run_totals_backtest(games, test_season, model_type=model_type)
+    console.print(f"Train seasons: {result.train_seasons} ({result.n_train} games)")
+    console.print(f"Test season: {result.test_season} ({result.n_test} games)")
+    console.print(f"MAE: {result.mae:.3f} runs  RMSE: {result.rmse:.3f} runs")
 
 
 @app.command()

@@ -26,10 +26,16 @@ ID_PATTERN = re.compile(r"^[a-z\-']+\d{2}$")
 CACHE_TTL_HOURS = 20  # roughly one game-day; keeps a daily scan from serving stale logs
 
 BATTING_TABLE_ID = "players_standard_batting"
-BATTING_COLUMNS = ["date", "team", "is_home", "opponent", "PA", "AB", "H", "HR", "TB", "BB", "SO"]
+BATTING_COLUMNS = [
+    "date", "team", "is_home", "opponent", "PA", "AB", "H", "2B", "3B", "HR", "TB", "BB", "SO",
+    "HBP", "OBP", "SLG", "OPS", "BAbip",
+]
 
 PITCHING_TABLE_ID = "players_standard_pitching"
-PITCHING_COLUMNS = ["date", "team", "is_home", "opponent", "IP", "BF", "SO", "ER", "H", "BB"]
+PITCHING_COLUMNS = [
+    "date", "team", "is_home", "opponent", "IP", "BF", "SO", "ER", "R", "H", "BB", "HR", "HBP",
+    "FIP", "ERA", "Pit", "GB", "FB", "LD", "PU",
+]
 
 
 class PlayerLookupError(RuntimeError):

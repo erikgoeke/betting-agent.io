@@ -156,6 +156,42 @@ def test_retrospective_card_grades_model_calls_against_finals():
     assert "3&ndash;5" in html and "7&ndash;2" in html
 
 
+def test_model_update_card_shows_when_retrained_model_would_flip_a_loss(monkeypatch):
+    # Actual logged pick: bet AWAY, but home won -> loss. The retrained model's
+    # reconstructed call (prob_home=0.63) favors home -- it would now be right.
+    actual = pd.DataFrame(
+        [
+            {
+                "commence_time": "2026-07-08T23:05:00Z", "home_team": "DET", "away_team": "ATH",
+                "side": "away", "side_price": 120, "model_home_win_prob": 0.45, "market_home_win_prob": 0.48,
+                "result": "home_win", "won": False,
+            }
+        ]
+    )
+    day = pd.DataFrame({"home_team": ["DET"], "away_team": ["ATH"], "prob_home": [0.63]})
+    monkeypatch.setattr(report, "_model_retrospective", lambda offset, now: day)
+
+    html = report._render_model_update_card(actual, now=None, days_offset=-1)
+
+    assert "Retrained model vs. yesterday's losses" in html
+    assert "DET" in html and "ATH" in html
+    assert "Would now be right" in html
+    assert "1</strong>" in html  # 1 of 1 losses would now be correct
+
+
+def test_model_update_card_empty_when_no_losses():
+    actual = pd.DataFrame(
+        [
+            {
+                "commence_time": "2026-07-08T23:05:00Z", "home_team": "DET", "away_team": "ATH",
+                "side": "home", "side_price": -120, "model_home_win_prob": 0.60, "market_home_win_prob": 0.55,
+                "result": "home_win", "won": True,
+            }
+        ]
+    )
+    assert report._render_model_update_card(actual, now=None) == ""
+
+
 def test_day_tabs_use_retrospective_when_day_has_no_log(tmp_path, monkeypatch):
     monkeypatch.setattr(report, "scan_today", lambda: _fake_scan_result())
     monkeypatch.setattr(report, "generate_picks", lambda history_seasons, days_ahead=0: [_fake_pick()] if days_ahead == 0 else [])

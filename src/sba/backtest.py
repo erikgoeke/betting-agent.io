@@ -1,8 +1,14 @@
 """Season-holdout evaluation of the win-probability model.
 
 This validates the model's accuracy and calibration against real outcomes.
-It does NOT measure historical betting ROI -- that requires historical odds,
-which the free tier of our odds provider doesn't include (see README).
+It does NOT measure betting ROI, closing-line value, or use public betting
+percentages -- all three need data this project doesn't have and can't get
+for free: ROI/CLV need historical odds *history* (the free Odds API tier is a
+single live snapshot with no history, see odds.py/README), and public betting
+% is a paid product (e.g. Action Network). Log loss, Brier score, and the
+calibration table below are the honest substitutes: a model can be profitable
+with well-calibrated probabilities even if its raw accuracy isn't much above
+the market's, so calibration matters more here than accuracy alone.
 """
 
 from __future__ import annotations
@@ -13,7 +19,7 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
 
 from sba.features import FEATURE_COLUMNS, LABEL_COLUMN, build_features
-from sba.model import predict_proba, train
+from sba.model import ModelType, predict_proba, train
 
 
 @dataclass
@@ -37,7 +43,9 @@ def calibration_table(y_true: pd.Series, y_prob: pd.Series, bins: int = 10) -> p
     return summary.reset_index()
 
 
-def run_backtest(games: pd.DataFrame, test_season: int) -> BacktestResult:
+def run_backtest(
+    games: pd.DataFrame, test_season: int, *, model_type: ModelType = "lightgbm", params: dict | None = None
+) -> BacktestResult:
     features = build_features(games)
     train_df = features[features["season"] < test_season]
     test_df = features[features["season"] == test_season]
@@ -48,7 +56,7 @@ def run_backtest(games: pd.DataFrame, test_season: int) -> BacktestResult:
             f"(train rows={len(train_df)}, test rows={len(test_df)})"
         )
 
-    pipeline = train(train_df)
+    pipeline = train(train_df, model_type=model_type, params=params)
     y_prob = predict_proba(pipeline, test_df)
     y_true = test_df[LABEL_COLUMN]
 

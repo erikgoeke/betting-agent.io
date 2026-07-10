@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from sba.data.bref_slate import fetch_todays_games
 from sba.data.mlb_stats import fetch_seasons, team_recent_form
 from sba.data.odds import american_to_decimal, fetch_mlb_odds, games_with_devigged_odds
 from sba.features import ROLLING_WINDOW, FEATURE_COLUMNS, build_live_features
@@ -66,11 +67,33 @@ def _kelly_stake(model_prob: float, decimal_odds: float) -> float:
     return max(0.0, f_star * KELLY_FRACTION)
 
 
+def _probable_starters_by_matchup() -> dict[tuple[str, str], tuple[str | None, str | None]]:
+    """Today's probable starters (Baseball-Reference IDs) keyed by (home_team, away_team).
+
+    Best-effort: a scrape failure here shouldn't block picks generation --
+    starter features just come back NaN for every game and the model still runs.
+    """
+    try:
+        slate = fetch_todays_games()
+    except Exception:
+        return {}
+    lookup = {}
+    for g in slate:
+        home_pitcher = g.get("home_pitcher")
+        away_pitcher = g.get("away_pitcher")
+        lookup[(g["home_team"], g["away_team"])] = (
+            home_pitcher["id"] if home_pitcher else None,
+            away_pitcher["id"] if away_pitcher else None,
+        )
+    return lookup
+
+
 def generate_picks(*, history_seasons: list[int], days_ahead: int = 0) -> list[Pick]:
     pipeline = load()
     games = fetch_seasons(history_seasons)
     raw_odds = fetch_mlb_odds()
     market_games = filter_todays_games(games_with_devigged_odds(raw_odds), days_ahead=days_ahead)
+    starters_by_matchup = _probable_starters_by_matchup()
 
     picks = []
     for mg in market_games:
@@ -80,7 +103,11 @@ def generate_picks(*, history_seasons: list[int], days_ahead: int = 0) -> list[P
         if len(home_recent) < 3 or len(away_recent) < 3:
             continue  # not enough recent history to trust the model for this team
 
-        live_features = build_live_features(home_recent, away_recent, mg["home_team"], mg["away_team"])
+        home_starter_id, away_starter_id = starters_by_matchup.get((mg["home_team"], mg["away_team"]), (None, None))
+        live_features = build_live_features(
+            games, home_recent, away_recent, mg["home_team"], mg["away_team"], as_of,
+            home_starter_id=home_starter_id, away_starter_id=away_starter_id,
+        )
         feature_row = pd.DataFrame([live_features])[FEATURE_COLUMNS]
         model_home_prob = float(predict_proba(pipeline, feature_row).iloc[0])
 
