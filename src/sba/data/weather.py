@@ -42,13 +42,24 @@ def _daily_frame(team: str, payload: dict) -> pd.DataFrame:
 
 
 def _get_with_retry(url: str, params: dict) -> requests.Response:
-    """Open-Meteo's free tier has a modest per-minute rate limit -- back off on 429s."""
+    """Open-Meteo's free tier has a modest per-minute rate limit -- back off on
+    429s. Also retries transient network errors (timeouts, connection resets):
+    a single ReadTimeout among ~30 team requests shouldn't crash the whole
+    `sba train` run."""
+    last_error: requests.exceptions.RequestException | None = None
     for attempt in range(5):
-        resp = requests.get(url, params=params, timeout=30)
+        try:
+            resp = requests.get(url, params=params, timeout=30)
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            time.sleep(10 * (attempt + 1))
+            continue
         if resp.status_code != 429:
             resp.raise_for_status()
             return resp
         time.sleep(10 * (attempt + 1))
+    if last_error is not None:
+        raise last_error
     resp.raise_for_status()
     return resp
 

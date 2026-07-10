@@ -10,10 +10,12 @@ with games.parquet's convention.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 
 import pandas as pd
 import pybaseball as pb
+import requests
 
 from sba.config import HARD_HIT_CACHE_PATH
 from sba.data.starters import retro_to_bbref_team
@@ -33,9 +35,23 @@ def retro_to_bbref_team_from_statcast(code: str, season: int) -> str:
     return retro_to_bbref_team(STATCAST_TO_RETRO_TEAM.get(code, code), season)
 
 
+def _statcast_with_retry(start_dt: str, end_dt: str, *, attempts: int = 3) -> pd.DataFrame:
+    """pybaseball's statcast() internally chunks into many day-by-day requests
+    over a multi-month range -- a single transient timeout among dozens of
+    those shouldn't crash the whole `sba train` run."""
+    for attempt in range(attempts):
+        try:
+            return pb.statcast(start_dt=start_dt, end_dt=end_dt, verbose=False)
+        except (requests.exceptions.RequestException, ConnectionError) as e:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(10 * (attempt + 1))
+    raise AssertionError("unreachable")  # loop always returns or raises
+
+
 def fetch_season_hard_hit(season: int) -> pd.DataFrame:
     """One row per (team, date): that team's hard-hit% among batted balls that game."""
-    raw = pb.statcast(start_dt=f"{season}-03-01", end_dt=f"{season}-11-15", verbose=False)
+    raw = _statcast_with_retry(f"{season}-03-01", f"{season}-11-15")
     if raw.empty:
         return pd.DataFrame(columns=["season", "date", "team", "hard_hit_rate", "n_batted_balls"])
 
