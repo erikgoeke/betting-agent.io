@@ -29,7 +29,11 @@ from sba.daily_scan import (
     top_batters_by_total_bases,
     top_pitchers_by_strikeouts,
 )
+from sba.data.mlb_stats import fetch_seasons
 from sba.data.odds import OddsAPIError, american_to_decimal, prob_to_american
+from sba.features import build_features
+from sba.model import load as load_model
+from sba.model import predict_proba
 from sba.picks import KELLY_FRACTION, Pick, generate_picks
 from sba.tracking import grade_picks, log_picks, summarize_record, todays_picks_from_log
 
@@ -404,6 +408,54 @@ def _render_winners_section(today: pd.DataFrame, now: datetime) -> str:
     )
 
 
+def _model_retrospective(days_offset: int, now: datetime) -> pd.DataFrame:
+    """The model's pregame opinion, reconstructed after the fact, for one day's
+    completed games. Needs no odds: features are pure team form, and the feature
+    builder only uses games strictly before each game's date -- so this is the
+    same probability the model would have produced before first pitch."""
+    games = fetch_seasons(DEFAULT_SEASONS)
+    features = build_features(games)
+    target = (now.astimezone(EASTERN) + timedelta(days=days_offset)).date()
+    day = features[features["date"].dt.date == target].copy()
+    if day.empty:
+        return day
+    day["prob_home"] = predict_proba(load_model(), day)
+    return day
+
+
+def _render_retrospective_card(day: pd.DataFrame) -> str:
+    """Finished games vs. the model's reconstructed pregame call -- no odds involved."""
+    if day.empty:
+        return ""
+
+    n_correct = int((day["home_win"] == (day["prob_home"] >= 0.5).astype(int)).sum())
+    body = []
+    for _, row in day.assign(conf=day["prob_home"].map(lambda p: max(p, 1 - p))).sort_values("conf", ascending=False).iterrows():
+        home_favored = row["prob_home"] >= 0.5
+        winner = row["home_team"] if home_favored else row["away_team"]
+        prob = row["prob_home"] if home_favored else 1 - row["prob_home"]
+        correct = bool(row["home_win"]) == home_favored
+        body.append(
+            f'<tr class="{"won" if correct else "lost"}">'
+            f'<td>{_esc(row["away_team"])} @ {_esc(row["home_team"])}</td>'
+            f'<td class="num">{row["away_runs"]:.0f}&ndash;{row["home_runs"]:.0f}</td>'
+            f'<td class="strong"><span class="chip">{_esc(winner)}&nbsp;<small>{"home" if home_favored else "away"}</small></span></td>'
+            f'<td class="num strong">{prob:.1%}</td>'
+            f'<td class="num">{_break_even_line(prob)}</td>'
+            f'<td><span class="result {"pos" if correct else "neg"}">{"&#10003; Correct" if correct else "&#10007; Wrong"}</span></td>'
+            "</tr>"
+        )
+    headers = [("Matchup", False), ("Final", True), ("Model pick", False), ("Win prob", True), ("Fair line", True), ("Verdict", False)]
+    head = "".join(f'<th{" class=\"num\"" if num else ""}>{_esc(label)}</th>' for label, num in headers)
+    return (
+        '<div class="card"><h2>Model retrospective</h2>'
+        f'<p class="sub">No pregame odds were logged for this day, but the model\'s call is reconstructable '
+        f"from team form alone &mdash; it picked the winner in <strong>{n_correct} of {len(day)}</strong> finished games. "
+        "Fair line is what the model would have considered a fair price; no comparison to actual books was possible.</p>"
+        f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div></div>'
+    )
+
+
 def _render_day_tabs(
     yesterday: pd.DataFrame, today: pd.DataFrame, tomorrow: pd.DataFrame,
     error: str | None, now: datetime,
@@ -416,25 +468,36 @@ def _render_day_tabs(
     """
     et_now = now.astimezone(EASTERN)
     days = [
-        ("yesterday", "Yesterday", (et_now - timedelta(days=1)).strftime("%b %-d"), yesterday,
+        ("yesterday", "Yesterday", (et_now - timedelta(days=1)).strftime("%b %-d"), yesterday, -1,
          "No pregame-logged games for yesterday.", ""),
-        ("today", "Today", et_now.strftime("%b %-d"), today,
+        ("today", "Today", et_now.strftime("%b %-d"), today, 0,
          "No games logged for today yet.", ""),
-        ("tomorrow", "Tomorrow", (et_now + timedelta(days=1)).strftime("%b %-d"), tomorrow,
+        ("tomorrow", "Tomorrow", (et_now + timedelta(days=1)).strftime("%b %-d"), tomorrow, None,
          "No lines posted for tomorrow yet.",
          '<p class="sub">Early lines &mdash; prices move before first pitch; tomorrow\'s own runs refresh them.</p>'),
     ]
     tabs = "".join(
         f'<button type="button" data-day="{key}"{" class=\"active\"" if key == "today" else ""}>'
         f"{label}<small>{stamp}</small></button>"
-        for key, label, stamp, _, _, _ in days
+        for key, label, stamp, *_ in days
     )
-    panels = "".join(
-        f'<div class="day-panel" id="day-{key}"{"" if key == "today" else " hidden"}>{note}'
-        f"{_render_picks_section(frame, error if key == 'today' else None, now, empty_note=empty)}"
-        f"{_render_winners_section(frame, now)}</div>"
-        for key, _, _, frame, empty, note in days
-    )
+    panels = []
+    for key, _, _, frame, retro_offset, empty, note in days:
+        # When a past day has no logged odds, fall back to the model's reconstructed
+        # pregame call graded against the final scores (no odds needed for that).
+        content = ""
+        if frame.empty and retro_offset is not None:
+            try:
+                content = _render_retrospective_card(_model_retrospective(retro_offset, now))
+            except Exception:
+                content = ""
+        if not content:
+            content = (
+                _render_picks_section(frame, error if key == "today" else None, now, empty_note=empty)
+                + _render_winners_section(frame, now)
+            )
+        panels.append(f'<div class="day-panel" id="day-{key}"{"" if key == "today" else " hidden"}>{note}{content}</div>')
+    panels = "".join(panels)
     script = """
 <script>
 document.querySelectorAll(".daytabs button").forEach(function (btn) {

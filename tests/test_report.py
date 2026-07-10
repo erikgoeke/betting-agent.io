@@ -15,6 +15,7 @@ def _stub_tracking(monkeypatch):
     monkeypatch.setattr(report, "log_picks", lambda picks: None)
     monkeypatch.setattr(report, "grade_picks", lambda season: (_ for _ in ()).throw(FileNotFoundError("no log")))
     monkeypatch.setattr(report, "todays_picks_from_log", lambda: pd.DataFrame())
+    monkeypatch.setattr(report, "_model_retrospective", lambda offset, now: pd.DataFrame())
 
 
 def _fake_scan_result() -> daily_scan.DailyScanResult:
@@ -128,6 +129,53 @@ def test_picks_section_shows_finished_games_with_results():
     assert '<tr class="won">' in html
     assert "&#10003; Won" in html
     assert "Upcoming" in html
+
+
+def test_retrospective_card_grades_model_calls_against_finals():
+    day = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-07-09", "2026-07-09"]),
+            "home_team": ["DET", "CIN"],
+            "away_team": ["ATH", "PHI"],
+            "home_runs": [5.0, 2.0],
+            "away_runs": [3.0, 7.0],
+            "home_win": [1, 0],
+            "prob_home": [0.63, 0.56],  # DET call correct; CIN call wrong
+        }
+    )
+
+    html = report._render_retrospective_card(day)
+
+    assert "Model retrospective" in html
+    assert "1 of 2" in html
+    assert '<tr class="won">' in html and '<tr class="lost">' in html
+    assert "&#10003; Correct" in html and "&#10007; Wrong" in html
+    # Fair line for the 63% call: -170.
+    assert "-170" in html
+    # Final scores shown away-home to match the matchup order.
+    assert "3&ndash;5" in html and "7&ndash;2" in html
+
+
+def test_day_tabs_use_retrospective_when_day_has_no_log(tmp_path, monkeypatch):
+    monkeypatch.setattr(report, "scan_today", lambda: _fake_scan_result())
+    monkeypatch.setattr(report, "generate_picks", lambda history_seasons, days_ahead=0: [_fake_pick()] if days_ahead == 0 else [])
+
+    retro = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-07-08"]),
+            "home_team": ["DET"], "away_team": ["ATH"],
+            "home_runs": [5.0], "away_runs": [3.0], "home_win": [1], "prob_home": [0.63],
+        }
+    )
+    monkeypatch.setattr(report, "_model_retrospective", lambda offset, now: retro if offset == -1 else pd.DataFrame())
+
+    output_path = tmp_path / "index.html"
+    report.generate_report(output_path)
+
+    text = output_path.read_text()
+    yesterday_panel = text.split('id="day-yesterday"')[1].split('id="day-today"')[0]
+    assert "Model retrospective" in yesterday_panel
+    assert "DET" in yesterday_panel
 
 
 def test_day_tabs_render_yesterday_today_tomorrow(tmp_path, monkeypatch):
