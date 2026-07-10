@@ -18,13 +18,13 @@ EASTERN = ZoneInfo("America/New_York")
 
 
 def filter_todays_games(market_games: list[dict], now: datetime | None = None) -> list[dict]:
-    """Keep only games that start on today's date in US Eastern time.
+    """Keep only games that start on today's US-Eastern date AND haven't started yet.
 
-    The odds feed returns every upcoming game from "right now" forward, so a run
-    late in the day would otherwise be dominated by tomorrow's slate (today's
-    already-started games drop out of the feed). MLB schedule days are US-local,
-    so "today" is defined in Eastern time -- matching how the props scan's
-    Baseball-Reference previews page defines the day.
+    The odds feed returns tomorrow's slate too ("today" is defined in Eastern time,
+    matching the props scan's Baseball-Reference previews page), and it also carries
+    in-play games with live mid-game odds -- a trailing team shows +2000-style
+    prices that have nothing to do with the pregame line the model reasons about.
+    Only pregame captures are usable for picks and for the graded record.
     """
     now = now or datetime.now(timezone.utc)
     today_eastern = now.astimezone(EASTERN).date()
@@ -32,7 +32,7 @@ def filter_todays_games(market_games: list[dict], now: datetime | None = None) -
     todays = []
     for mg in market_games:
         commence = datetime.fromisoformat(mg["commence_time"].replace("Z", "+00:00"))
-        if commence.astimezone(EASTERN).date() == today_eastern:
+        if commence.astimezone(EASTERN).date() == today_eastern and commence > now:
             todays.append(mg)
     return todays
 

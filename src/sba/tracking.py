@@ -93,6 +93,15 @@ def grade_picks(season: int) -> pd.DataFrame:
         raise FileNotFoundError(f"No picks log found at {PICKS_LOG_PATH} -- run `sba picks` first.")
 
     log = _read_log()
+
+    # Purge ungraded rows that were logged at/after first pitch: those captured live
+    # in-game odds (the feed carries in-play games), not the pregame line the model
+    # reasons about -- grading them would corrupt the P/L record with mid-game prices.
+    logged_at = pd.to_datetime(log["logged_at"], utc=True, format="ISO8601")
+    commence = pd.to_datetime(log["commence_time"], utc=True, format="ISO8601")
+    in_play_capture = log["won"].isna() & (logged_at >= commence)
+    log = log[~in_play_capture].reset_index(drop=True)
+
     games = fetch_seasons([season])
     games["date"] = pd.to_datetime(games["date"])
 

@@ -29,3 +29,13 @@ def test_filter_todays_games_uses_eastern_date_not_utc():
     late_game = _game("2026-07-10T02:10:00Z")  # July 9, 10:10 PM ET
 
     assert filter_todays_games([late_game], now=now) == [late_game]
+
+
+def test_filter_todays_games_drops_in_play_games():
+    # A game that started 30 minutes ago is still "today" but its odds are live
+    # in-game prices, not the pregame line -- it must be excluded.
+    now = datetime(2026, 7, 9, 23, 30, tzinfo=timezone.utc)
+    started = _game("2026-07-09T23:00:00Z")
+    upcoming = _game("2026-07-10T02:10:00Z")
+
+    assert filter_todays_games([started, upcoming], now=now) == [upcoming]

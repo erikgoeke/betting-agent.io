@@ -64,6 +64,34 @@ def test_read_log_normalizes_won_column_through_csv_round_trip(log_path):
     assert pd.isna(reread.loc[1, "won"])
 
 
+def test_grade_picks_purges_in_play_captures_instead_of_grading_them(log_path, monkeypatch):
+    import sba.tracking as tr
+
+    # Row logged 2h AFTER first pitch -> in-play odds capture, must be purged.
+    in_play = _pick(commence_time="2026-07-08T23:00:00Z")
+    pregame = _pick(commence_time="2026-07-08T23:30:00Z")
+    tracking.log_picks([in_play, pregame])
+    log = pd.read_csv(log_path)
+    log["logged_at"] = ["2026-07-09T01:00:00+00:00", "2026-07-08T15:00:00+00:00"]
+    log.to_csv(log_path, index=False)
+
+    games = pd.DataFrame(
+        {
+            "season": [2026, 2026], "date": pd.to_datetime(["2026-07-08", "2026-07-08"]),
+            "home_team": ["ATL", "ATL"], "away_team": ["PIT", "PIT"],
+            "home_runs": [5, 5], "away_runs": [2, 2], "home_win": [1, 1],
+        }
+    )
+    monkeypatch.setattr(tr, "fetch_seasons", lambda seasons: games.copy())
+
+    graded = tracking.grade_picks(2026)
+
+    remaining = pd.read_csv(log_path)
+    assert len(remaining) == 1  # in-play row purged from the log entirely
+    assert len(graded) == 1  # only the pregame pick was graded
+    assert remaining.iloc[0]["commence_time"] == "2026-07-08T23:30:00Z"
+
+
 def test_summarize_record_units_and_hit_rate():
     graded = pd.DataFrame(
         [
