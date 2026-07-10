@@ -51,6 +51,8 @@ class Pick:
     edge: float
     suggested_stake_pct: float
     n_books: int = 0
+    home_price: float = 0.0  # best posted line for each side, regardless of pick
+    away_price: float = 0.0
 
 
 def _kelly_stake(model_prob: float, decimal_odds: float) -> float:
@@ -107,6 +109,8 @@ def generate_picks(*, history_seasons: list[int]) -> list[Pick]:
                 edge=edge,
                 suggested_stake_pct=stake_pct,
                 n_books=mg["n_bookmakers"],
+                home_price=mg["best_home_price"],
+                away_price=mg["best_away_price"],
             )
         )
 

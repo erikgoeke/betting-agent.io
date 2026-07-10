@@ -289,6 +289,44 @@ def _render_picks_section(picks: list[Pick] | None, error: str | None) -> str:
     return f'<div class="card">{header}{_table(headers, rows)}</div>'
 
 
+def _render_winners_section(picks: list[Pick] | None) -> str:
+    """Every game ranked by the model's win confidence -- who's most likely to win,
+    which is a different question from where the betting value is."""
+    if not picks:
+        return ""
+
+    headers = [
+        ("Time", False), ("Matchup", False), ("Predicted winner", False),
+        ("Win prob", True), ("Market", True), ("Book line", True),
+    ]
+    ranked = sorted(picks, key=lambda p: max(p.model_home_win_prob, 1 - p.model_home_win_prob), reverse=True)
+    max_prob = max(max(p.model_home_win_prob, 1 - p.model_home_win_prob) for p in ranked)
+
+    rows = []
+    for p in ranked:
+        home_favored = p.model_home_win_prob >= 0.5
+        winner = p.home_team if home_favored else p.away_team
+        prob = p.model_home_win_prob if home_favored else 1 - p.model_home_win_prob
+        market = p.market_home_win_prob if home_favored else 1 - p.market_home_win_prob
+        price = p.home_price if home_favored else p.away_price
+        rows.append([
+            f'<td class="tc">{_esc(_fmt_time_et(p.commence_time))}</td>',
+            f'<td>{_esc(p.away_team)} @ {_esc(p.home_team)}</td>',
+            f'<td class="strong"><span class="chip">{_esc(winner)}&nbsp;<small>{"home" if home_favored else "away"}</small></span></td>',
+            f'<td class="num strong">{prob:.1%}{_bar(prob, max_prob)}</td>',
+            f'<td class="num">{market:.1%}</td>',
+            f'<td class="num">{_fmt_line(price)}</td>',
+        ])
+
+    return (
+        '<div class="card"><h2>Most likely winners</h2>'
+        '<p class="sub">Every game ranked by the model\'s win confidence. Confidence is not value: '
+        "a heavy favorite can be a bad bet at its price, and the best-value plays are usually in the "
+        "edge table above, not here.</p>"
+        f"{_table(headers, rows)}</div>"
+    )
+
+
 def _render_results_section(graded: pd.DataFrame, max_rows: int = 20) -> str:
     """Graded past picks, most recent first -- green rows won, red rows lost."""
     if graded.empty:
@@ -578,6 +616,7 @@ def generate_report(output_path: Path) -> None:
 <p class="dateline">{dateline} &middot; snapshot of the last scheduled run</p>
 {_render_tiles(scan_result, picks)}
 {_render_picks_section(picks, picks_error)}
+{_render_winners_section(picks)}
 {_render_results_section(graded)}
 {_render_props_section(scan_result)}
 {_render_methodology()}

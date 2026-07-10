@@ -80,6 +80,32 @@ def test_generate_report_includes_picks_and_props(tmp_path, monkeypatch):
     assert "cdn" not in text.lower()
 
 
+def test_winners_section_ranks_by_confidence_and_can_disagree_with_edge_pick():
+    # Model says home wins 44% -> most likely winner is the AWAY team, even though
+    # the edge pick (side="home") is the home dog. The section must use the away
+    # side's price, which is why Pick carries both prices.
+    dog_pick = Pick(
+        commence_time="2026-07-09T23:00:00Z", home_team="CIN", away_team="PHI",
+        model_home_win_prob=0.44, market_home_win_prob=0.38, side="home",
+        side_price=148, side_model_prob=0.44, side_market_prob=0.38,
+        edge=0.06, suggested_stake_pct=0.02, home_price=148, away_price=-160,
+    )
+    confident_pick = Pick(
+        commence_time="2026-07-09T23:00:00Z", home_team="DET", away_team="ATH",
+        model_home_win_prob=0.63, market_home_win_prob=0.54, side="home",
+        side_price=-121, side_model_prob=0.63, side_market_prob=0.54,
+        edge=0.09, suggested_stake_pct=0.03, home_price=-121, away_price=112,
+    )
+
+    html = report._render_winners_section([dog_pick, confident_pick])
+
+    # PHI (away, 56%) is the predicted winner of the CIN game at the away price.
+    assert "PHI" in html and "-160" in html
+    # DET (63%) ranks above PHI (56%).
+    assert html.index("DET") < html.index("PHI")
+    assert "Most likely winners" in html
+
+
 def _graded_frame() -> pd.DataFrame:
     return pd.DataFrame(
         [
