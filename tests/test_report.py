@@ -14,6 +14,7 @@ def _stub_tracking(monkeypatch):
     """Keep report tests from writing to / reading the real picks log."""
     monkeypatch.setattr(report, "log_picks", lambda picks: None)
     monkeypatch.setattr(report, "grade_picks", lambda season: (_ for _ in ()).throw(FileNotFoundError("no log")))
+    monkeypatch.setattr(report, "todays_picks_from_log", lambda: pd.DataFrame())
 
 
 def _fake_scan_result() -> daily_scan.DailyScanResult:
@@ -81,6 +82,8 @@ def test_generate_report_includes_picks_and_props(tmp_path, monkeypatch):
 
 
 def test_winners_section_ranks_by_confidence_and_can_disagree_with_edge_pick():
+    from datetime import datetime, timezone
+
     # Model says home wins 44% -> most likely winner is the AWAY team, even though
     # the edge pick (side="home") is the home dog. The section must use the away
     # side's price, which is why Pick carries both prices.
@@ -97,13 +100,31 @@ def test_winners_section_ranks_by_confidence_and_can_disagree_with_edge_pick():
         edge=0.09, suggested_stake_pct=0.03, home_price=-121, away_price=112,
     )
 
-    html = report._render_winners_section([dog_pick, confident_pick])
+    frame = report._picks_to_frame([dog_pick, confident_pick])
+    html = report._render_winners_section(frame, now=datetime(2026, 7, 9, 12, 0, tzinfo=timezone.utc))
 
     # PHI (away, 56%) is the predicted winner of the CIN game at the away price.
     assert "PHI" in html and "-160" in html
     # DET (63%) ranks above PHI (56%).
     assert html.index("DET") < html.index("PHI")
     assert "Most likely winners" in html
+    assert "Upcoming" in html
+
+
+def test_picks_section_shows_finished_games_with_results():
+    from datetime import datetime, timezone
+
+    frame = report._picks_to_frame([_fake_pick()])
+    frame.loc[0, "won"] = True
+    # A second, still-upcoming game.
+    frame = pd.concat([frame, report._picks_to_frame([_fake_pick()])], ignore_index=True)
+    frame.loc[1, "commence_time"] = "2026-07-09T23:59:00Z"
+
+    html = report._render_picks_section(frame, error=None, now=datetime(2026, 7, 9, 23, 30, tzinfo=timezone.utc))
+
+    assert '<tr class="won">' in html
+    assert "&#10003; Won" in html
+    assert "Upcoming" in html
 
 
 def _graded_frame() -> pd.DataFrame:

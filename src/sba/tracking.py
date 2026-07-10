@@ -20,7 +20,8 @@ from sba.picks import Pick
 LOG_COLUMNS = [
     "logged_at", "commence_time", "home_team", "away_team",
     "side", "side_price", "model_home_win_prob", "market_home_win_prob",
-    "edge", "suggested_stake_pct", "result", "won",
+    "edge", "suggested_stake_pct", "n_books", "home_price", "away_price",
+    "result", "won",
 ]
 
 GAME_KEY = ["commence_time", "home_team", "away_team"]
@@ -31,8 +32,10 @@ def _read_log() -> pd.DataFrame:
 
     CSV round-trips a mixed bool/NaN column as "True"/"False" strings in an
     object column; downstream logic (isna checks, means) needs actual booleans.
+    Older logs may predate newer columns; reindexing fills those with NaN.
     """
     log = pd.read_csv(PICKS_LOG_PATH)
+    log = log.reindex(columns=LOG_COLUMNS)
     log["won"] = log["won"].map({True: True, False: False, "True": True, "False": False})
     return log
 
@@ -50,6 +53,9 @@ def log_picks(picks: list[Pick]) -> pd.DataFrame:
             "market_home_win_prob": p.market_home_win_prob,
             "edge": p.edge,
             "suggested_stake_pct": p.suggested_stake_pct,
+            "n_books": p.n_books,
+            "home_price": p.home_price,
+            "away_price": p.away_price,
             "result": None,
             "won": None,
         }
@@ -109,6 +115,18 @@ def grade_picks(season: int) -> pd.DataFrame:
 
     log.to_csv(PICKS_LOG_PATH, index=False)
     return log.dropna(subset=["won"])
+
+
+def todays_picks_from_log() -> pd.DataFrame:
+    """Every pick logged for today's US-Eastern date -- upcoming, started, and
+    finished games alike (the odds feed only carries upcoming games, but the log
+    keeps what the morning run captured before games began)."""
+    if not PICKS_LOG_PATH.exists():
+        return pd.DataFrame(columns=LOG_COLUMNS)
+    log = _read_log()
+    today = pd.Timestamp.now(tz="America/New_York").normalize().tz_localize(None)
+    game_dates = log["commence_time"].map(_game_date_eastern)
+    return log[game_dates == today].reset_index(drop=True)
 
 
 @dataclass

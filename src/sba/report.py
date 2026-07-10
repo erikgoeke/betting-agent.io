@@ -31,7 +31,7 @@ from sba.daily_scan import (
 )
 from sba.data.odds import OddsAPIError, american_to_decimal, prob_to_american
 from sba.picks import KELLY_FRACTION, Pick, generate_picks
-from sba.tracking import grade_picks, log_picks, summarize_record
+from sba.tracking import grade_picks, log_picks, summarize_record, todays_picks_from_log
 
 TOP_N = 10
 PAGE_PASSWORD_ENV = "PAGE_PASSWORD"
@@ -232,6 +232,35 @@ def _table(headers: list[tuple[str, bool]], rows: list[list[str]]) -> str:
     return f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
+def _picks_to_frame(picks: list[Pick]) -> pd.DataFrame:
+    """Fallback frame when there is no picks log to read today's slate from."""
+    return pd.DataFrame(
+        [
+            {
+                "commence_time": p.commence_time, "home_team": p.home_team, "away_team": p.away_team,
+                "side": p.side, "side_price": p.side_price,
+                "model_home_win_prob": p.model_home_win_prob, "market_home_win_prob": p.market_home_win_prob,
+                "edge": p.edge, "suggested_stake_pct": p.suggested_stake_pct,
+                "n_books": p.n_books, "home_price": p.home_price, "away_price": p.away_price,
+                "result": None, "won": None,
+            }
+            for p in picks
+        ]
+    )
+
+
+def _row_status(row, now: datetime) -> tuple[str, str]:
+    """(status html, tr class) for a game row: graded final, started, or upcoming."""
+    if row["won"] is True:
+        return '<span class="result pos">&#10003; Won</span>', "won"
+    if row["won"] is False:
+        return '<span class="result neg">&#10007; Lost</span>', "lost"
+    commence = datetime.fromisoformat(str(row["commence_time"]).replace("Z", "+00:00"))
+    if commence <= now:
+        return '<span class="tc">In progress</span>', ""
+    return '<span class="tc">Upcoming</span>', ""
+
+
 def _render_tiles(result: DailyScanResult, picks: list[Pick] | None) -> str:
     tiles = [
         ("Games today", f"{result.n_games}", ""),
@@ -250,80 +279,112 @@ def _render_tiles(result: DailyScanResult, picks: list[Pick] | None) -> str:
     return f'<div class="tiles">{cells}</div>'
 
 
-def _render_picks_section(picks: list[Pick] | None, error: str | None) -> str:
+def _render_picks_section(today: pd.DataFrame, error: str | None, now: datetime) -> str:
     header = (
         '<h2>Moneyline &mdash; model vs. market</h2>'
-        '<p class="sub">Fair line is the no-vig price implied by the model probability; '
-        'book line is the best price currently posted across surveyed sportsbooks. '
-        'Edge is the model&ndash;market probability gap on the picked side.</p>'
+        '<p class="sub">Every game on today\'s slate. Fair line is the no-vig price implied by the model '
+        "probability; book line is the best posted price across surveyed sportsbooks &mdash; for games "
+        "already started or finished, the last price captured before first pitch. Edge is the "
+        "model&ndash;market probability gap on the picked side.</p>"
     )
-    if error is not None:
-        return f'<div class="card">{header}<p class="unavailable">Picks unavailable: {_esc(error)}</p></div>'
+    if today.empty:
+        reason = f"Picks unavailable: {_esc(error)}" if error else "No games logged for today yet."
+        return f'<div class="card">{header}<p class="unavailable">{reason}</p></div>'
 
     headers = [
-        ("Time", False), ("Matchup", False), ("Pick", False),
+        ("Time", False), ("Matchup", False), ("Pick", False), ("Status", False),
         ("Book line", True), ("Fair line", True), ("Line gap", True),
         ("Model", True), ("Market", True), ("Edge", True),
         ("¼-Kelly", True), ("Books", True),
     ]
-    max_edge = max((p.edge for p in picks), default=0)
-    rows = []
-    for p in sorted(picks, key=lambda x: x.edge, reverse=True):
-        pick_team = p.home_team if p.side == "home" else p.away_team
-        fair = prob_to_american(p.side_model_prob)
-        gap = p.side_price - fair  # positive: book pays better than the model's fair price
-        gap_cls = "pos" if gap >= 0 else "neg"
-        rows.append([
-            f'<td class="tc">{_esc(_fmt_time_et(p.commence_time))}</td>',
-            f'<td>{_esc(p.away_team)} @ {_esc(p.home_team)}</td>',
-            f'<td class="strong"><span class="chip">{_esc(pick_team)}&nbsp;<small>{_esc(p.side)}</small></span></td>',
-            f'<td class="num strong">{_fmt_line(p.side_price)}</td>',
-            f'<td class="num">{_fmt_line(fair)}</td>',
-            f'<td class="num {gap_cls}">{gap:+.0f}</td>',
-            f'<td class="num">{p.side_model_prob:.1%}</td>',
-            f'<td class="num">{p.side_market_prob:.1%}</td>',
-            f'<td class="num"><span class="{"pos" if p.edge >= 0 else "neg"}">{p.edge:+.1%}</span>{_bar(max(p.edge, 0), max_edge)}</td>',
-            f'<td class="num">{p.suggested_stake_pct:.1%}</td>',
-            f'<td class="num">{p.n_books}</td>',
-        ])
-    return f'<div class="card">{header}{_table(headers, rows)}</div>'
+    max_edge = max(today["edge"].max(), 0)
+    body = []
+    for _, row in today.sort_values("edge", ascending=False).iterrows():
+        pick_home = row["side"] == "home"
+        pick_team = row["home_team"] if pick_home else row["away_team"]
+        model_prob = row["model_home_win_prob"] if pick_home else 1 - row["model_home_win_prob"]
+        market_prob = row["market_home_win_prob"] if pick_home else 1 - row["market_home_win_prob"]
+        fair = prob_to_american(model_prob)
+        gap = row["side_price"] - fair
+        status, tr_cls = _row_status(row, now)
+        n_books = "&mdash;" if pd.isna(row["n_books"]) else f"{int(row['n_books'])}"
+        body.append(
+            f'<tr class="{tr_cls}">'
+            f'<td class="tc">{_esc(_fmt_time_et(row["commence_time"]))}</td>'
+            f'<td>{_esc(row["away_team"])} @ {_esc(row["home_team"])}</td>'
+            f'<td class="strong"><span class="chip">{_esc(pick_team)}&nbsp;<small>{_esc(row["side"])}</small></span></td>'
+            f"<td>{status}</td>"
+            f'<td class="num strong">{_fmt_line(row["side_price"])}</td>'
+            f'<td class="num">{_fmt_line(fair)}</td>'
+            f'<td class="num {"pos" if gap >= 0 else "neg"}">{gap:+.0f}</td>'
+            f'<td class="num">{model_prob:.1%}</td>'
+            f'<td class="num">{market_prob:.1%}</td>'
+            f'<td class="num"><span class="{"pos" if row["edge"] >= 0 else "neg"}">{row["edge"]:+.1%}</span>{_bar(max(row["edge"], 0), max_edge)}</td>'
+            f'<td class="num">{row["suggested_stake_pct"]:.1%}</td>'
+            f'<td class="num">{n_books}</td>'
+            "</tr>"
+        )
+    head = "".join(f'<th{" class=\"num\"" if num else ""}>{_esc(label)}</th>' for label, num in headers)
+    note = f'<p class="sub">Live odds refresh unavailable this run: {_esc(error)}</p>' if error else ""
+    return (
+        f'<div class="card">{header}{note}'
+        f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div></div>'
+    )
 
 
-def _render_winners_section(picks: list[Pick] | None) -> str:
+def _render_winners_section(today: pd.DataFrame, now: datetime) -> str:
     """Every game ranked by the model's win confidence -- who's most likely to win,
     which is a different question from where the betting value is."""
-    if not picks:
+    if today.empty:
         return ""
 
+    frame = today.copy()
+    frame["win_prob"] = frame["model_home_win_prob"].map(lambda p: max(p, 1 - p))
+    max_prob = frame["win_prob"].max()
+
+    body = []
+    for _, row in frame.sort_values("win_prob", ascending=False).iterrows():
+        home_favored = row["model_home_win_prob"] >= 0.5
+        winner = row["home_team"] if home_favored else row["away_team"]
+        market = row["market_home_win_prob"] if home_favored else 1 - row["market_home_win_prob"]
+        price = row["home_price"] if home_favored else row["away_price"]
+        price_str = "&mdash;" if pd.isna(price) else _fmt_line(price)
+        # Green/red only when the model's predicted WINNER was right/wrong -- this can
+        # differ from the edge pick's result when they were different sides.
+        winner_won = None
+        if row["won"] is not None and not pd.isna(row["won"]):
+            edge_pick_home = row["side"] == "home"
+            home_won = bool(row["won"]) == edge_pick_home
+            winner_won = home_won == home_favored
+        status = (
+            '<span class="result pos">&#10003; Won</span>' if winner_won is True
+            else '<span class="result neg">&#10007; Lost</span>' if winner_won is False
+            else _row_status(row, now)[0]
+        )
+        tr_cls = "won" if winner_won is True else "lost" if winner_won is False else ""
+        body.append(
+            f'<tr class="{tr_cls}">'
+            f'<td class="tc">{_esc(_fmt_time_et(row["commence_time"]))}</td>'
+            f'<td>{_esc(row["away_team"])} @ {_esc(row["home_team"])}</td>'
+            f'<td class="strong"><span class="chip">{_esc(winner)}&nbsp;<small>{"home" if home_favored else "away"}</small></span></td>'
+            f"<td>{status}</td>"
+            f'<td class="num strong">{row["win_prob"]:.1%}{_bar(row["win_prob"], max_prob)}</td>'
+            f'<td class="num">{market:.1%}</td>'
+            f'<td class="num">{price_str}</td>'
+            "</tr>"
+        )
+
     headers = [
-        ("Time", False), ("Matchup", False), ("Predicted winner", False),
+        ("Time", False), ("Matchup", False), ("Predicted winner", False), ("Status", False),
         ("Win prob", True), ("Market", True), ("Book line", True),
     ]
-    ranked = sorted(picks, key=lambda p: max(p.model_home_win_prob, 1 - p.model_home_win_prob), reverse=True)
-    max_prob = max(max(p.model_home_win_prob, 1 - p.model_home_win_prob) for p in ranked)
-
-    rows = []
-    for p in ranked:
-        home_favored = p.model_home_win_prob >= 0.5
-        winner = p.home_team if home_favored else p.away_team
-        prob = p.model_home_win_prob if home_favored else 1 - p.model_home_win_prob
-        market = p.market_home_win_prob if home_favored else 1 - p.market_home_win_prob
-        price = p.home_price if home_favored else p.away_price
-        rows.append([
-            f'<td class="tc">{_esc(_fmt_time_et(p.commence_time))}</td>',
-            f'<td>{_esc(p.away_team)} @ {_esc(p.home_team)}</td>',
-            f'<td class="strong"><span class="chip">{_esc(winner)}&nbsp;<small>{"home" if home_favored else "away"}</small></span></td>',
-            f'<td class="num strong">{prob:.1%}{_bar(prob, max_prob)}</td>',
-            f'<td class="num">{market:.1%}</td>',
-            f'<td class="num">{_fmt_line(price)}</td>',
-        ])
-
+    head = "".join(f'<th{" class=\"num\"" if num else ""}>{_esc(label)}</th>' for label, num in headers)
     return (
         '<div class="card"><h2>Most likely winners</h2>'
         '<p class="sub">Every game ranked by the model\'s win confidence. Confidence is not value: '
         "a heavy favorite can be a bad bet at its price, and the best-value plays are usually in the "
         "edge table above, not here.</p>"
-        f"{_table(headers, rows)}</div>"
+        f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div></div>'
     )
 
 
@@ -599,6 +660,16 @@ def generate_report(output_path: Path) -> None:
     except Exception:
         graded = pd.DataFrame()
 
+    # Today's full slate comes from the log (started/finished games drop out of the
+    # live odds feed); fall back to the fresh picks when there's no log to read.
+    try:
+        today_df = todays_picks_from_log()
+    except Exception:
+        today_df = pd.DataFrame()
+    if today_df.empty and picks:
+        today_df = _picks_to_frame(picks)
+    now_for_status = datetime.now(timezone.utc)
+
     now_utc = datetime.now(timezone.utc)
     generated_at = now_utc.strftime("%Y-%m-%d %H:%M UTC")
     dateline = now_utc.astimezone(EASTERN).strftime("%A, %B %-d, %Y")
@@ -615,8 +686,8 @@ def generate_report(output_path: Path) -> None:
 <h1>Daily edge report</h1>
 <p class="dateline">{dateline} &middot; snapshot of the last scheduled run</p>
 {_render_tiles(scan_result, picks)}
-{_render_picks_section(picks, picks_error)}
-{_render_winners_section(picks)}
+{_render_picks_section(today_df, picks_error, now_for_status)}
+{_render_winners_section(today_df, now_for_status)}
 {_render_results_section(graded)}
 {_render_props_section(scan_result)}
 {_render_methodology()}
