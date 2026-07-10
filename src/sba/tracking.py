@@ -126,16 +126,16 @@ def grade_picks(season: int) -> pd.DataFrame:
     return log.dropna(subset=["won"])
 
 
-def todays_picks_from_log() -> pd.DataFrame:
-    """Every pick logged for today's US-Eastern date -- upcoming, started, and
-    finished games alike (the odds feed only carries upcoming games, but the log
-    keeps what the morning run captured before games began)."""
+def todays_picks_from_log(day_offset: int = 0) -> pd.DataFrame:
+    """Every pick logged for a US-Eastern date (today + day_offset) -- upcoming,
+    started, and finished games alike (the odds feed only carries upcoming games,
+    but the log keeps what the morning run captured before games began)."""
     if not PICKS_LOG_PATH.exists():
         return pd.DataFrame(columns=LOG_COLUMNS)
     log = _read_log()
-    today = pd.Timestamp.now(tz="America/New_York").normalize().tz_localize(None)
+    target = pd.Timestamp.now(tz="America/New_York").normalize().tz_localize(None) + pd.Timedelta(days=day_offset)
     game_dates = log["commence_time"].map(_game_date_eastern)
-    return log[game_dates == today].reset_index(drop=True)
+    return log[game_dates == target].reset_index(drop=True)
 
 
 @dataclass

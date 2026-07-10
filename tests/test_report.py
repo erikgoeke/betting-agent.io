@@ -130,6 +130,26 @@ def test_picks_section_shows_finished_games_with_results():
     assert "Upcoming" in html
 
 
+def test_day_tabs_render_yesterday_today_tomorrow(tmp_path, monkeypatch):
+    monkeypatch.setattr(report, "scan_today", lambda: _fake_scan_result())
+    monkeypatch.setattr(report, "generate_picks", lambda history_seasons, days_ahead=0: [_fake_pick()])
+
+    output_path = tmp_path / "index.html"
+    report.generate_report(output_path)
+
+    text = output_path.read_text()
+    assert 'data-day="yesterday"' in text and 'data-day="today"' in text and 'data-day="tomorrow"' in text
+    assert 'id="day-yesterday" hidden' in text  # non-default panels start hidden
+    assert 'id="day-today">' in text  # today visible by default
+    assert "Early lines" in text  # tomorrow's caveat note
+    # Tomorrow's panel is populated from the same stubbed picks.
+    tomorrow_panel = text.split('id="day-tomorrow"')[1]
+    assert "NYY" in tomorrow_panel
+    # Yesterday (no log in tests) shows its empty note rather than nothing.
+    yesterday_panel = text.split('id="day-yesterday"')[1].split('id="day-today"')[0]
+    assert "No pregame-logged games for yesterday." in yesterday_panel
+
+
 def _graded_frame() -> pd.DataFrame:
     return pd.DataFrame(
         [

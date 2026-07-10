@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import html
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -152,6 +152,18 @@ tbody tr.lost:hover td { background: color-mix(in srgb, var(--bad) 12%, transpar
   border: 1px dashed var(--hairline); border-radius: 10px; color: var(--ink-2);
   background: var(--inset); padding: 0.85rem 1.1rem; font-size: 0.88rem;
 }
+.daytabs {
+  display: inline-flex; gap: 2px; background: var(--inset);
+  border: 1px solid var(--ring); border-radius: 10px; padding: 3px; margin-bottom: 1.25rem;
+}
+.daytabs button {
+  border: none; background: transparent; color: var(--ink-2); cursor: pointer;
+  font: inherit; font-size: 0.85rem; font-weight: 600;
+  padding: 0.38rem 1.1rem; border-radius: 8px;
+}
+.daytabs button.active { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--ring); }
+.daytabs button small { display: block; font-size: 0.66rem; font-weight: 500; color: var(--muted); letter-spacing: 0.02em; }
+.day-panel[hidden] { display: none; }
 .math-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
 .fx { background: var(--inset); border: 1px solid var(--ring); border-radius: 12px; padding: 1rem 1.1rem; }
 .fx h3 {
@@ -279,16 +291,19 @@ def _render_tiles(result: DailyScanResult, picks: list[Pick] | None) -> str:
     return f'<div class="tiles">{cells}</div>'
 
 
-def _render_picks_section(today: pd.DataFrame, error: str | None, now: datetime) -> str:
+def _render_picks_section(
+    today: pd.DataFrame, error: str | None, now: datetime,
+    empty_note: str = "No games logged for today yet.",
+) -> str:
     header = (
         '<h2>Moneyline &mdash; model vs. market</h2>'
-        '<p class="sub">Every game on today\'s slate. Fair line is the no-vig price implied by the model '
+        '<p class="sub">Fair line is the no-vig price implied by the model '
         "probability; book line is the best posted price across surveyed sportsbooks &mdash; for games "
         "already started or finished, the last price captured before first pitch. Edge is the "
         "model&ndash;market probability gap on the picked side.</p>"
     )
     if today.empty:
-        reason = f"Picks unavailable: {_esc(error)}" if error else "No games logged for today yet."
+        reason = f"Picks unavailable: {_esc(error)}" if error else _esc(empty_note)
         return f'<div class="card">{header}<p class="unavailable">{reason}</p></div>'
 
     headers = [
@@ -387,6 +402,52 @@ def _render_winners_section(today: pd.DataFrame, now: datetime) -> str:
         "edge table above, not here.</p>"
         f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div></div>'
     )
+
+
+def _render_day_tabs(
+    yesterday: pd.DataFrame, today: pd.DataFrame, tomorrow: pd.DataFrame,
+    error: str | None, now: datetime,
+) -> str:
+    """Yesterday / Today / Tomorrow switcher over the game tables.
+
+    Yesterday comes from the picks log (graded results at pregame-captured odds);
+    tomorrow from the early posted lines, which move before first pitch and are
+    refreshed by tomorrow's own runs.
+    """
+    et_now = now.astimezone(EASTERN)
+    days = [
+        ("yesterday", "Yesterday", (et_now - timedelta(days=1)).strftime("%b %-d"), yesterday,
+         "No pregame-logged games for yesterday.", ""),
+        ("today", "Today", et_now.strftime("%b %-d"), today,
+         "No games logged for today yet.", ""),
+        ("tomorrow", "Tomorrow", (et_now + timedelta(days=1)).strftime("%b %-d"), tomorrow,
+         "No lines posted for tomorrow yet.",
+         '<p class="sub">Early lines &mdash; prices move before first pitch; tomorrow\'s own runs refresh them.</p>'),
+    ]
+    tabs = "".join(
+        f'<button type="button" data-day="{key}"{" class=\"active\"" if key == "today" else ""}>'
+        f"{label}<small>{stamp}</small></button>"
+        for key, label, stamp, _, _, _ in days
+    )
+    panels = "".join(
+        f'<div class="day-panel" id="day-{key}"{"" if key == "today" else " hidden"}>{note}'
+        f"{_render_picks_section(frame, error if key == 'today' else None, now, empty_note=empty)}"
+        f"{_render_winners_section(frame, now)}</div>"
+        for key, _, _, frame, empty, note in days
+    )
+    script = """
+<script>
+document.querySelectorAll(".daytabs button").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    document.querySelectorAll(".daytabs button").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    document.querySelectorAll(".day-panel").forEach(function (p) { p.hidden = true; });
+    document.getElementById("day-" + btn.dataset.day).hidden = false;
+  });
+});
+</script>
+"""
+    return f'<div class="daytabs">{tabs}</div>{panels}{script}'
 
 
 def _render_results_section(graded: pd.DataFrame, max_rows: int = 20) -> str:
@@ -669,6 +730,17 @@ def generate_report(output_path: Path) -> None:
         today_df = pd.DataFrame()
     if today_df.empty and picks:
         today_df = _picks_to_frame(picks)
+
+    try:
+        yesterday_df = todays_picks_from_log(day_offset=-1)
+    except Exception:
+        yesterday_df = pd.DataFrame()
+
+    try:
+        tomorrow_df = _picks_to_frame(generate_picks(history_seasons=DEFAULT_SEASONS, days_ahead=1))
+    except Exception:
+        tomorrow_df = pd.DataFrame()
+
     now_for_status = datetime.now(timezone.utc)
 
     now_utc = datetime.now(timezone.utc)
@@ -687,8 +759,7 @@ def generate_report(output_path: Path) -> None:
 <h1>Daily edge report</h1>
 <p class="dateline">{dateline} &middot; snapshot of the last scheduled run</p>
 {_render_tiles(scan_result, picks)}
-{_render_picks_section(today_df, picks_error, now_for_status)}
-{_render_winners_section(today_df, now_for_status)}
+{_render_day_tabs(yesterday_df, today_df, tomorrow_df, picks_error, now_for_status)}
 {_render_results_section(graded)}
 {_render_props_section(scan_result)}
 {_render_methodology()}

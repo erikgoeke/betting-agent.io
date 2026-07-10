@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -17,24 +17,26 @@ KELLY_FRACTION = 0.25  # quarter-Kelly: conservative stake sizing
 EASTERN = ZoneInfo("America/New_York")
 
 
-def filter_todays_games(market_games: list[dict], now: datetime | None = None) -> list[dict]:
-    """Keep only games that start on today's US-Eastern date AND haven't started yet.
+def filter_todays_games(market_games: list[dict], now: datetime | None = None, days_ahead: int = 0) -> list[dict]:
+    """Keep only games on the target US-Eastern date (today + days_ahead) that
+    haven't started yet.
 
-    The odds feed returns tomorrow's slate too ("today" is defined in Eastern time,
-    matching the props scan's Baseball-Reference previews page), and it also carries
-    in-play games with live mid-game odds -- a trailing team shows +2000-style
-    prices that have nothing to do with the pregame line the model reasons about.
-    Only pregame captures are usable for picks and for the graded record.
+    The odds feed returns several days of upcoming games ("today" is defined in
+    Eastern time, matching the props scan's Baseball-Reference previews page), and
+    it also carries in-play games with live mid-game odds -- a trailing team shows
+    +2000-style prices that have nothing to do with the pregame line the model
+    reasons about. Only pregame captures are usable for picks and for the graded
+    record.
     """
     now = now or datetime.now(timezone.utc)
-    today_eastern = now.astimezone(EASTERN).date()
+    target_date = (now.astimezone(EASTERN) + timedelta(days=days_ahead)).date()
 
-    todays = []
+    kept = []
     for mg in market_games:
         commence = datetime.fromisoformat(mg["commence_time"].replace("Z", "+00:00"))
-        if commence.astimezone(EASTERN).date() == today_eastern and commence > now:
-            todays.append(mg)
-    return todays
+        if commence.astimezone(EASTERN).date() == target_date and commence > now:
+            kept.append(mg)
+    return kept
 
 
 @dataclass
@@ -64,11 +66,11 @@ def _kelly_stake(model_prob: float, decimal_odds: float) -> float:
     return max(0.0, f_star * KELLY_FRACTION)
 
 
-def generate_picks(*, history_seasons: list[int]) -> list[Pick]:
+def generate_picks(*, history_seasons: list[int], days_ahead: int = 0) -> list[Pick]:
     pipeline = load()
     games = fetch_seasons(history_seasons)
     raw_odds = fetch_mlb_odds()
-    market_games = filter_todays_games(games_with_devigged_odds(raw_odds))
+    market_games = filter_todays_games(games_with_devigged_odds(raw_odds), days_ahead=days_ahead)
 
     picks = []
     for mg in market_games:
