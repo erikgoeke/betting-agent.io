@@ -2,9 +2,11 @@ name: Publish MLB report to GitHub Pages
 
 on:
   schedule:
-    # 11:00 UTC (~7am ET) daily -- well before the earliest MLB games. Adjust for
-    # your timezone/preference; this repo's report is regenerated fresh each run.
-    - cron: "0 11 * * *"
+    # 10:23 UTC (~6:23am ET) daily -- well before the earliest MLB games. GitHub's
+    # scheduler delays top-of-hour crons the most (heavily subscribed); an off-peak
+    # minute gets picked up more promptly, and the early start leaves slack for the
+    # delays that still happen.
+    - cron: "23 10 * * *"
   workflow_dispatch: {}
 
 permissions:
