@@ -109,6 +109,9 @@ def test_winners_section_ranks_by_confidence_and_can_disagree_with_edge_pick():
     assert html.index("DET") < html.index("PHI")
     assert "Most likely winners" in html
     assert "Upcoming" in html
+    # Fair line for DET's 63% win probability: -100*0.63/0.37 = -170.
+    assert "Fair line" in html
+    assert "-170" in html
 
 
 def test_picks_section_shows_finished_games_with_results():

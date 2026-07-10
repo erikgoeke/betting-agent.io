@@ -369,6 +369,7 @@ def _render_winners_section(today: pd.DataFrame, now: datetime) -> str:
             f'<td class="strong"><span class="chip">{_esc(winner)}&nbsp;<small>{"home" if home_favored else "away"}</small></span></td>'
             f"<td>{status}</td>"
             f'<td class="num strong">{row["win_prob"]:.1%}{_bar(row["win_prob"], max_prob)}</td>'
+            f'<td class="num">{_break_even_line(row["win_prob"])}</td>'
             f'<td class="num">{market:.1%}</td>'
             f'<td class="num">{price_str}</td>'
             "</tr>"
@@ -376,7 +377,7 @@ def _render_winners_section(today: pd.DataFrame, now: datetime) -> str:
 
     headers = [
         ("Time", False), ("Matchup", False), ("Predicted winner", False), ("Status", False),
-        ("Win prob", True), ("Market", True), ("Book line", True),
+        ("Win prob", True), ("Fair line", True), ("Market", True), ("Book line", True),
     ]
     head = "".join(f'<th{" class=\"num\"" if num else ""}>{_esc(label)}</th>' for label, num in headers)
     return (
