@@ -29,17 +29,19 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      # Persists data/ (historical game + player-log cache) and models/ (trained
-      # model) across otherwise-ephemeral runners. The player-prop cache has a 20h
-      # TTL by design, so on this once-daily schedule it's mostly refetched anyway --
-      # this mainly saves the multi-season team-game history from being rebuilt from
-      # scratch every run.
-      - name: Restore data/model cache
+      # Persists data/ (historical game + player-log cache), models/ (trained
+      # model), and logs/ (the picks log that powers the graded-results section)
+      # across otherwise-ephemeral runners. The player-prop cache has a 20h TTL
+      # by design, so on this once-daily schedule it's mostly refetched anyway --
+      # this mainly saves the multi-season team-game history from being rebuilt
+      # from scratch every run, and carries yesterday's picks forward for grading.
+      - name: Restore data/model/picks-log cache
         uses: actions/cache@v4
         with:
           path: |
             data/
             models/
+            logs/
           key: sba-cache-${{ github.run_id }}
           restore-keys: |
             sba-cache-

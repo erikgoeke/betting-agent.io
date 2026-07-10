@@ -1,9 +1,19 @@
 import hashlib
 
+import pandas as pd
+import pytest
+
 from sba import daily_scan, report
 from sba.data.odds import OddsAPIError
 from sba.picks import Pick
 from sba.props import BatterProjection, PitcherProjection
+
+
+@pytest.fixture(autouse=True)
+def _stub_tracking(monkeypatch):
+    """Keep report tests from writing to / reading the real picks log."""
+    monkeypatch.setattr(report, "log_picks", lambda picks: None)
+    monkeypatch.setattr(report, "grade_picks", lambda season: (_ for _ in ()).throw(FileNotFoundError("no log")))
 
 
 def _fake_scan_result() -> daily_scan.DailyScanResult:
@@ -68,6 +78,44 @@ def test_generate_report_includes_picks_and_props(tmp_path, monkeypatch):
     # MathML methodology section renders natively, no external scripts.
     assert "<math" in text
     assert "cdn" not in text.lower()
+
+
+def _graded_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "logged_at": "2026-07-08T11:00:00+00:00", "commence_time": "2026-07-08T23:05:00Z",
+                "home_team": "ATL", "away_team": "PIT", "side": "home", "side_price": -120,
+                "model_home_win_prob": 0.60, "market_home_win_prob": 0.55,
+                "edge": 0.05, "suggested_stake_pct": 0.02, "result": "home_win", "won": True,
+            },
+            {
+                "logged_at": "2026-07-08T11:00:00+00:00", "commence_time": "2026-07-08T23:10:00Z",
+                "home_team": "NYY", "away_team": "BOS", "side": "away", "side_price": 150,
+                "model_home_win_prob": 0.45, "market_home_win_prob": 0.50,
+                "edge": 0.05, "suggested_stake_pct": 0.02, "result": "home_win", "won": False,
+            },
+        ]
+    )
+
+
+def test_generate_report_renders_graded_results_green_and_red(tmp_path, monkeypatch):
+    monkeypatch.setattr(report, "scan_today", lambda: _fake_scan_result())
+    monkeypatch.setattr(report, "generate_picks", lambda history_seasons: [_fake_pick()])
+    monkeypatch.setattr(report, "grade_picks", lambda season: _graded_frame())
+
+    output_path = tmp_path / "index.html"
+    report.generate_report(output_path)
+
+    text = output_path.read_text()
+    assert "Results &mdash; graded picks" in text
+    assert '<tr class="won">' in text
+    assert '<tr class="lost">' in text
+    assert "&#10003; Won" in text
+    assert "&#10007; Lost" in text
+    # Record 1-1; won at -120 pays +0.83u, loss is -1u -> -0.17u.
+    assert "Record <strong>1&ndash;1</strong>" in text
+    assert "-0.17u" in text
 
 
 def test_break_even_line_handles_degenerate_probabilities():

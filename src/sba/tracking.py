@@ -7,12 +7,14 @@ against real results as games finish, building our own track record over time.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import pandas as pd
 
 from sba.config import PICKS_LOG_PATH
 from sba.data.mlb_stats import fetch_seasons
+from sba.data.odds import american_to_decimal
 from sba.picks import Pick
 
 LOG_COLUMNS = [
@@ -20,6 +22,19 @@ LOG_COLUMNS = [
     "side", "side_price", "model_home_win_prob", "market_home_win_prob",
     "edge", "suggested_stake_pct", "result", "won",
 ]
+
+GAME_KEY = ["commence_time", "home_team", "away_team"]
+
+
+def _read_log() -> pd.DataFrame:
+    """Read the picks log with the `won` column normalized to real booleans.
+
+    CSV round-trips a mixed bool/NaN column as "True"/"False" strings in an
+    object column; downstream logic (isna checks, means) needs actual booleans.
+    """
+    log = pd.read_csv(PICKS_LOG_PATH)
+    log["won"] = log["won"].map({True: True, False: False, "True": True, "False": False})
+    return log
 
 
 def log_picks(picks: list[Pick]) -> pd.DataFrame:
@@ -43,8 +58,13 @@ def log_picks(picks: list[Pick]) -> pd.DataFrame:
     new_rows = pd.DataFrame(rows, columns=LOG_COLUMNS)
 
     if PICKS_LOG_PATH.exists():
-        existing = pd.read_csv(PICKS_LOG_PATH)
-        combined = pd.concat([existing, new_rows], ignore_index=True)
+        existing = _read_log()
+        # Re-logging the same game (e.g. multiple runs in one day) replaces the
+        # stale ungraded row with the fresh odds instead of duplicating it.
+        # Graded rows are history and are never touched.
+        new_keys = set(map(tuple, new_rows[GAME_KEY].itertuples(index=False)))
+        is_replaced = existing["won"].isna() & existing[GAME_KEY].apply(tuple, axis=1).isin(new_keys)
+        combined = pd.concat([existing[~is_replaced], new_rows], ignore_index=True)
     else:
         combined = new_rows
 
@@ -66,8 +86,8 @@ def grade_picks(season: int) -> pd.DataFrame:
     if not PICKS_LOG_PATH.exists():
         raise FileNotFoundError(f"No picks log found at {PICKS_LOG_PATH} -- run `sba picks` first.")
 
-    log = pd.read_csv(PICKS_LOG_PATH)
-    games = fetch_seasons([season], force_refresh=True)
+    log = _read_log()
+    games = fetch_seasons([season])
     games["date"] = pd.to_datetime(games["date"])
 
     ungraded = log[log["won"].isna()]
@@ -89,3 +109,29 @@ def grade_picks(season: int) -> pd.DataFrame:
 
     log.to_csv(PICKS_LOG_PATH, index=False)
     return log.dropna(subset=["won"])
+
+
+@dataclass
+class Record:
+    n: int
+    wins: int
+    losses: int
+    hit_rate: float
+    units: float  # cumulative P/L betting one unit per pick at the logged price
+
+
+def summarize_record(graded: pd.DataFrame) -> Record:
+    """Running record over graded picks, flat one unit per pick at the logged price."""
+    wins = int(graded["won"].sum())
+    losses = len(graded) - wins
+    units = sum(
+        (american_to_decimal(row["side_price"]) - 1) if row["won"] else -1.0
+        for _, row in graded.iterrows()
+    )
+    return Record(
+        n=len(graded),
+        wins=wins,
+        losses=losses,
+        hit_rate=wins / len(graded) if len(graded) else 0.0,
+        units=units,
+    )

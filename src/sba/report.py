@@ -18,7 +18,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from sba.config import DEFAULT_SEASONS
+import pandas as pd
+
+from sba.config import CURRENT_YEAR, DEFAULT_SEASONS
 from sba.daily_scan import (
     DailyScanResult,
     scan_today,
@@ -27,8 +29,9 @@ from sba.daily_scan import (
     top_batters_by_total_bases,
     top_pitchers_by_strikeouts,
 )
-from sba.data.odds import OddsAPIError, prob_to_american
+from sba.data.odds import OddsAPIError, american_to_decimal, prob_to_american
 from sba.picks import KELLY_FRACTION, Pick, generate_picks
+from sba.tracking import grade_picks, log_picks, summarize_record
 
 TOP_N = 10
 PAGE_PASSWORD_ENV = "PAGE_PASSWORD"
@@ -135,6 +138,12 @@ td.strong { font-weight: 650; }
 td.tc { color: var(--ink-2); font-size: 0.8rem; letter-spacing: 0.03em; }
 .pos { color: var(--good); font-weight: 650; }
 .neg { color: var(--bad); font-weight: 650; }
+tr.won td { background: color-mix(in srgb, var(--good) 9%, transparent); }
+tr.lost td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
+tbody tr.won:hover td { background: color-mix(in srgb, var(--good) 15%, transparent); }
+tbody tr.lost:hover td { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.result { font-weight: 650; }
+.record { display: inline-flex; gap: 0.9rem; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 .chip {
   display: inline-flex; align-items: center; gap: 0.4rem;
   padding: 0.12rem 0.6rem 0.12rem 0.5rem; border-radius: 999px;
@@ -287,6 +296,50 @@ def _render_picks_section(picks: list[Pick] | None, error: str | None) -> str:
             f'<td class="num">{p.n_books}</td>',
         ])
     return f'<div class="card">{header}{_table(headers, rows)}</div>'
+
+
+def _render_results_section(graded: pd.DataFrame, max_rows: int = 20) -> str:
+    """Graded past picks, most recent first -- green rows won, red rows lost."""
+    if graded.empty:
+        return ""
+    record = summarize_record(graded)
+    recent = graded.sort_values("commence_time", ascending=False).head(max_rows)
+
+    headers = [
+        ("Date", False), ("Matchup", False), ("Pick", False),
+        ("Price", True), ("Model", True), ("Edge", True), ("Result", False), ("P/L", True),
+    ]
+    head = "".join(f'<th{" class=\"num\"" if num else ""}>{_esc(label)}</th>' for label, num in headers)
+
+    body = []
+    for _, row in recent.iterrows():
+        won = bool(row["won"])
+        pick_team = row["home_team"] if row["side"] == "home" else row["away_team"]
+        model_prob = row["model_home_win_prob"] if row["side"] == "home" else 1 - row["model_home_win_prob"]
+        pl = (american_to_decimal(row["side_price"]) - 1) if won else -1.0
+        date = datetime.fromisoformat(str(row["commence_time"]).replace("Z", "+00:00")).astimezone(EASTERN)
+        body.append(
+            f'<tr class="{"won" if won else "lost"}">'
+            f'<td class="tc">{date.strftime("%b %-d")}</td>'
+            f"<td>{_esc(row['away_team'])} @ {_esc(row['home_team'])}</td>"
+            f'<td class="strong"><span class="chip">{_esc(pick_team)}&nbsp;<small>{_esc(row["side"])}</small></span></td>'
+            f'<td class="num">{_fmt_line(row["side_price"])}</td>'
+            f'<td class="num">{model_prob:.1%}</td>'
+            f'<td class="num">{row["edge"]:+.1%}</td>'
+            f'<td><span class="result {"pos" if won else "neg"}">{"&#10003; Won" if won else "&#10007; Lost"}</span></td>'
+            f'<td class="num {"pos" if won else "neg"}">{pl:+.2f}u</td>'
+            "</tr>"
+        )
+
+    return (
+        '<div class="card"><h2>Results &mdash; graded picks</h2>'
+        f'<p class="sub"><span class="record"><span>Record <strong>{record.wins}&ndash;{record.losses}</strong></span>'
+        f"<span>Hit rate <strong>{record.hit_rate:.1%}</strong></span>"
+        f'<span>P/L <strong class="{"pos" if record.units >= 0 else "neg"}">{record.units:+.2f}u</strong> '
+        f"(flat 1u per pick)</span></span></p>"
+        f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div>'
+        "</div>"
+    )
 
 
 def _props_card(title: str, sub: str, headers: list[tuple[str, bool]], rows: list[list[str]]) -> str:
@@ -506,8 +559,16 @@ def generate_report(output_path: Path) -> None:
     picks_error: str | None = None
     try:
         picks = generate_picks(history_seasons=DEFAULT_SEASONS)
+        log_picks(picks)  # so a later run can grade today's picks against results
     except (OddsAPIError, FileNotFoundError) as e:
         picks_error = str(e)
+
+    # Grade previously logged picks against final scores. Degrades to omitting the
+    # results section (no log yet, no finished games) rather than failing the report.
+    try:
+        graded = grade_picks(CURRENT_YEAR)
+    except Exception:
+        graded = pd.DataFrame()
 
     now_utc = datetime.now(timezone.utc)
     generated_at = now_utc.strftime("%Y-%m-%d %H:%M UTC")
@@ -526,6 +587,7 @@ def generate_report(output_path: Path) -> None:
 <p class="dateline">{dateline} &middot; snapshot of the last scheduled run</p>
 {_render_tiles(scan_result, picks)}
 {_render_picks_section(picks, picks_error)}
+{_render_results_section(graded)}
 {_render_props_section(scan_result)}
 {_render_methodology()}
 <footer>
