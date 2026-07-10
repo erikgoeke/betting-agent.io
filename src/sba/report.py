@@ -39,23 +39,14 @@ EASTERN = ZoneInfo("America/New_York")
 
 PAGE_STYLE = """
 :root {
-  color-scheme: light dark;
-  --page: #f6f6f3; --surface: #fcfcfb; --inset: #f1f0ec;
-  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-  --hairline: #e6e5df; --ring: rgba(11,11,11,0.08);
-  --accent: #2a78d6; --accent-2: #4a3aa7;
-  --good: #006300; --bad: #d03b3b;
-  --shadow: 0 1px 2px rgba(11,11,11,0.04), 0 6px 20px rgba(11,11,11,0.05);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --page: #0d0d0d; --surface: #1a1a19; --inset: #141413;
-    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-    --hairline: #2c2c2a; --ring: rgba(255,255,255,0.09);
-    --accent: #3987e5; --accent-2: #9085e9;
-    --good: #0ca30c; --bad: #e66767;
-    --shadow: none;
-  }
+  /* Always dark -- deliberately not tied to the viewer's system preference. */
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --inset: #141413;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --hairline: #2c2c2a; --ring: rgba(255,255,255,0.09);
+  --accent: #3987e5; --accent-2: #9085e9;
+  --good: #0ca30c; --bad: #e66767;
+  --shadow: none;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
