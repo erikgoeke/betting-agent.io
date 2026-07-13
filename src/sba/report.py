@@ -569,9 +569,12 @@ def _render_history_browser(history_index: dict[str, list[dict]]) -> str:
     return f"""
 <div class="card">
 <h2>Browse any date this season</h2>
-<p class="sub">The model's reconstructed pregame call for any game this season, graded against the
-final score -- no market odds involved (same method as the retrospective above), just what the
-model would have said before first pitch.</p>
+<p class="sub"><strong>Today's</strong> model, reapplied to every game this season and graded against the
+final score -- no market odds involved (same odds-free method as the retrospective above). This is
+recomputed fresh each time the model is retrained, so it will show a different call than the Results
+table above for the same game if the model has since changed: the Results table is what was actually
+bet at the time (whatever model was live that day); this section is what the current model would say
+in hindsight. They're expected to disagree sometimes -- that's the model improving, not a bug.</p>
 <input type="date" id="history-date" min="{dates[0]}" max="{dates[-1]}">
 <div id="history-results"></div>
 </div>
