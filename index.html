@@ -193,7 +193,7 @@ footer {
     <div class="mark">SBA</div>
     <div><span class="name">Sports Betting Analytics</span><span class="tag">Quantitative MLB Model</span></div>
   </div>
-  <div class="run-pill"><span class="dot"></span>Model run 2026-07-13 19:37 UTC</div>
+  <div class="run-pill"><span class="dot"></span>Model run 2026-07-13 19:52 UTC</div>
 </div>
 <h1>Daily edge report</h1>
 <p class="dateline">Monday, July 13, 2026 &middot; snapshot of the last scheduled run</p>
@@ -214,9 +214,12 @@ document.querySelectorAll(".daytabs button").forEach(function (btn) {
 
 <div class="card">
 <h2>Browse any date this season</h2>
-<p class="sub">The model's reconstructed pregame call for any game this season, graded against the
-final score -- no market odds involved (same method as the retrospective above), just what the
-model would have said before first pitch.</p>
+<p class="sub"><strong>Today's</strong> model, reapplied to every game this season and graded against the
+final score -- no market odds involved (same odds-free method as the retrospective above). This is
+recomputed fresh each time the model is retrained, so it will show a different call than the Results
+table above for the same game if the model has since changed: the Results table is what was actually
+bet at the time (whatever model was live that day); this section is what the current model would say
+in hindsight. They're expected to disagree sometimes -- that's the model improving, not a bug.</p>
 <input type="date" id="history-date" min="2026-03-25" max="2026-07-10">
 <div id="history-results"></div>
 </div>
