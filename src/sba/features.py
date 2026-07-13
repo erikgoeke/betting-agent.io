@@ -19,20 +19,24 @@ import pandas as pd
 from sba.data.mlb_stats import team_recent_form
 from sba.data.stadiums import haversine_km, timezone_shift
 from sba.data.starters import fetch_starts
-from sba.data.statcast_data import add_hard_hit_rolling, fetch_hard_hit, team_hard_hit_form_asof
+from sba.data.statcast_data import BATTED_BALL_METRICS, add_hard_hit_rolling, fetch_hard_hit, team_batted_ball_form_asof
 from sba.data.team_game_stats import fetch_team_game_stats
 from sba.data.weather import WEATHER_COLUMNS, fetch_weather_history, game_day_weather
+from sba.elo import ELO_HOME_ADV, compute_elo_table, elo_ratings_asof, ELO_START
 from sba.park_factors import compute_park_factors, latest_park_factor
 from sba.starter_features import STARTER_WINDOW, build_starter_rolling_table, starter_form_asof
 from sba.team_offense_features import OFFENSE_DIFF_COLUMNS, OFFENSE_RATE_COLUMNS, add_offense_rolling, team_offense_form_asof
 from sba.umpire_features import umpire_factor_table
 
 ROLLING_WINDOW = 15
+SHORT_WINDOW = 5    # hot/cold streak signal the 15-game window smooths away
+LONG_WINDOW = 30    # slower-moving true-talent signal the 15-game window forgets
 MIN_PRIOR_GAMES = 3
 
 # Always present -- rows missing any of these get dropped (see build_features).
 CORE_FEATURE_COLUMNS = [
     "win_pct_diff", "run_diff_diff", "rest_days_diff",
+    "run_diff_short_diff", "run_diff_long_diff", "elo_diff",
     "sos_adj_win_pct_diff", "sos_adj_run_diff_diff",
     "home_park_factor", "away_travel_km", "away_timezone_shift",
     *WEATHER_COLUMNS,
@@ -45,7 +49,8 @@ CORE_FEATURE_COLUMNS = [
 STARTER_DIFF_COLUMNS = ["starter_whip_diff", "starter_k_rate_diff", "starter_bb_rate_diff", "starter_fip_diff", "starter_rest_days_diff"]
 # ump_run_factor has no live-picks source (no probable-umpire feed) -- always NaN
 # for build_live_features; harmless for tree models, just never informative live.
-OTHER_DIFF_COLUMNS = ["hard_hit_rate_diff", "ump_run_factor"]
+BATTED_BALL_DIFF_COLUMNS = [f"{m}_diff" for m in BATTED_BALL_METRICS]
+OTHER_DIFF_COLUMNS = [*BATTED_BALL_DIFF_COLUMNS, "ump_run_factor"]
 
 # Consistently ~0 SHAP importance across backtests -- pruned from what the model
 # actually trains on. Still computed above (dropna gate, other features derive
@@ -85,6 +90,12 @@ def add_rolling_form(log: pd.DataFrame, window: int = ROLLING_WINDOW) -> pd.Data
     log["rolling_run_diff"] = grouped["run_diff"].transform(
         lambda s: s.shift(1).rolling(window, min_periods=MIN_PRIOR_GAMES).mean()
     )
+    log["rolling_run_diff_short"] = grouped["run_diff"].transform(
+        lambda s: s.shift(1).rolling(SHORT_WINDOW, min_periods=MIN_PRIOR_GAMES).mean()
+    )
+    log["rolling_run_diff_long"] = grouped["run_diff"].transform(
+        lambda s: s.shift(1).rolling(LONG_WINDOW, min_periods=MIN_PRIOR_GAMES).mean()
+    )
     log["rest_days"] = grouped["date"].diff().dt.days
 
     # Each row's opponent's own rolling form entering that same game (leak-free,
@@ -112,31 +123,21 @@ def build_features(games: pd.DataFrame, window: int = ROLLING_WINDOW) -> pd.Data
     enough team history yet (early season / new team stretch)."""
     log = add_rolling_form(_team_game_log(games), window=window)
 
-    form_cols = [
-        "season", "date", "team", "opponent",
-        "rolling_win_pct", "rolling_run_diff", "rest_days", "sos_adj_win_pct", "sos_adj_run_diff",
-    ]
+    form_stats = {
+        "rolling_win_pct": "rolling_win_pct",
+        "rolling_run_diff": "rolling_run_diff",
+        "rolling_run_diff_short": "rolling_run_diff_short",
+        "rolling_run_diff_long": "rolling_run_diff_long",
+        "rest_days": "rest_days",
+        "sos_adj_win_pct": "sos_adj_win_pct",
+        "sos_adj_run_diff": "sos_adj_run_diff",
+    }
+    form_cols = ["season", "date", "team", "opponent", *form_stats]
     home_form = log[form_cols].rename(
-        columns={
-            "team": "home_team",
-            "opponent": "away_team",
-            "rolling_win_pct": "home_rolling_win_pct",
-            "rolling_run_diff": "home_rolling_run_diff",
-            "rest_days": "home_rest_days",
-            "sos_adj_win_pct": "home_sos_adj_win_pct",
-            "sos_adj_run_diff": "home_sos_adj_run_diff",
-        }
+        columns={"team": "home_team", "opponent": "away_team", **{s: f"home_{s}" for s in form_stats}}
     )
     away_form = log[form_cols].rename(
-        columns={
-            "team": "away_team",
-            "opponent": "home_team",
-            "rolling_win_pct": "away_rolling_win_pct",
-            "rolling_run_diff": "away_rolling_run_diff",
-            "rest_days": "away_rest_days",
-            "sos_adj_win_pct": "away_sos_adj_win_pct",
-            "sos_adj_run_diff": "away_sos_adj_run_diff",
-        }
+        columns={"team": "away_team", "opponent": "home_team", **{s: f"away_{s}" for s in form_stats}}
     )
 
     features = games.merge(home_form, on=["season", "date", "home_team", "away_team"], how="left")
@@ -144,9 +145,15 @@ def build_features(games: pd.DataFrame, window: int = ROLLING_WINDOW) -> pd.Data
 
     features["win_pct_diff"] = features["home_rolling_win_pct"] - features["away_rolling_win_pct"]
     features["run_diff_diff"] = features["home_rolling_run_diff"] - features["away_rolling_run_diff"]
+    features["run_diff_short_diff"] = features["home_rolling_run_diff_short"] - features["away_rolling_run_diff_short"]
+    features["run_diff_long_diff"] = features["home_rolling_run_diff_long"] - features["away_rolling_run_diff_long"]
     features["rest_days_diff"] = features["home_rest_days"] - features["away_rest_days"]
     features["sos_adj_win_pct_diff"] = features["home_sos_adj_win_pct"] - features["away_sos_adj_win_pct"]
     features["sos_adj_run_diff_diff"] = features["home_sos_adj_run_diff"] - features["away_sos_adj_run_diff"]
+
+    elo = compute_elo_table(games)
+    features = features.merge(elo, on=["season", "date", "home_team", "away_team"], how="left")
+    features["elo_diff"] = features["home_elo"] + ELO_HOME_ADV - features["away_elo"]
 
     park_factors = compute_park_factors(games).rename(columns={"team": "home_team", "park_factor": "home_park_factor"})
     features = features.merge(park_factors, on=["season", "home_team"], how="left")
@@ -207,17 +214,25 @@ def build_features(games: pd.DataFrame, window: int = ROLLING_WINDOW) -> pd.Data
     hard_hit = fetch_hard_hit(sorted(games["season"].unique().tolist()))
     if not hard_hit.empty:
         hard_hit = add_hard_hit_rolling(hard_hit)
-        home_hh = hard_hit.rename(columns={"team": "home_team", "rolling_hard_hit_rate": "home_hard_hit_rate"})
-        away_hh = hard_hit.rename(columns={"team": "away_team", "rolling_hard_hit_rate": "away_hard_hit_rate"})
-        features = features.merge(
-            home_hh[["season", "date", "home_team", "home_hard_hit_rate"]], on=["season", "date", "home_team"], how="left"
+        home_bb = hard_hit.rename(
+            columns={"team": "home_team", **{f"rolling_{m}": f"home_{m}" for m in BATTED_BALL_METRICS}}
+        )
+        away_bb = hard_hit.rename(
+            columns={"team": "away_team", **{f"rolling_{m}": f"away_{m}" for m in BATTED_BALL_METRICS}}
         )
         features = features.merge(
-            away_hh[["season", "date", "away_team", "away_hard_hit_rate"]], on=["season", "date", "away_team"], how="left"
+            home_bb[["season", "date", "home_team", *[f"home_{m}" for m in BATTED_BALL_METRICS]]],
+            on=["season", "date", "home_team"], how="left",
         )
-        features["hard_hit_rate_diff"] = features["home_hard_hit_rate"] - features["away_hard_hit_rate"]
+        features = features.merge(
+            away_bb[["season", "date", "away_team", *[f"away_{m}" for m in BATTED_BALL_METRICS]]],
+            on=["season", "date", "away_team"], how="left",
+        )
+        for m in BATTED_BALL_METRICS:
+            features[f"{m}_diff"] = features[f"home_{m}"] - features[f"away_{m}"]
     else:
-        features["hard_hit_rate_diff"] = float("nan")
+        for m in BATTED_BALL_METRICS:
+            features[f"{m}_diff"] = float("nan")
 
     league_avg_runs = (games["home_runs"] + games["away_runs"]).mean()
     ump_table = umpire_factor_table(sorted(games["season"].unique().tolist()), league_avg_runs)
@@ -284,21 +299,32 @@ def build_live_features(
 
     `games` is the full multi-season history (needed to look up each recent
     opponent's own form for the strength-of-schedule adjustment); `home_recent`/
-    `away_recent` are each team's own last `window` games (see team_recent_form);
-    `game_date` is used to look up that day's weather forecast at the home park.
-    `home_starter_id`/`away_starter_id` are Baseball-Reference player IDs for the
-    probable starters (see bref_slate.py); omitted (unannounced) starters just
-    leave the starter-diff features as NaN, which the model handles natively.
+    `away_recent` are each team's most recent games -- at least LONG_WINDOW of
+    them when available (see team_recent_form); the shorter-window stats slice
+    their own tails out of the same frame. `game_date` is used to look up that
+    day's weather forecast at the home park. `home_starter_id`/`away_starter_id`
+    are Baseball-Reference player IDs for the probable starters (see
+    bref_slate.py); omitted (unannounced) starters just leave the starter-diff
+    features as NaN, which the model handles natively.
     """
-    home = _team_form_stats(home_recent, home_team)
-    away = _team_form_stats(away_recent, away_team)
-    home_sos = _sos_adjusted_stats(games, home_team, home_recent, window=window)
-    away_sos = _sos_adjusted_stats(games, away_team, away_recent, window=window)
+    home_mid, away_mid = home_recent.tail(window), away_recent.tail(window)
+    home = _team_form_stats(home_mid, home_team)
+    away = _team_form_stats(away_mid, away_team)
+    home_short = _team_form_stats(home_recent.tail(SHORT_WINDOW), home_team)
+    away_short = _team_form_stats(away_recent.tail(SHORT_WINDOW), away_team)
+    home_long = _team_form_stats(home_recent.tail(LONG_WINDOW), home_team)
+    away_long = _team_form_stats(away_recent.tail(LONG_WINDOW), away_team)
+    home_sos = _sos_adjusted_stats(games, home_team, home_mid, window=window)
+    away_sos = _sos_adjusted_stats(games, away_team, away_mid, window=window)
     current_season = int(games["season"].max())
+    elo = elo_ratings_asof(games, game_date)
 
     features = {
         "win_pct_diff": home["win_pct"] - away["win_pct"],
         "run_diff_diff": home["run_diff"] - away["run_diff"],
+        "run_diff_short_diff": home_short["run_diff"] - away_short["run_diff"],
+        "run_diff_long_diff": home_long["run_diff"] - away_long["run_diff"],
+        "elo_diff": elo.get(home_team, ELO_START) + ELO_HOME_ADV - elo.get(away_team, ELO_START),
         "rest_days_diff": 0.0,
         "sos_adj_win_pct_diff": home_sos["sos_adj_win_pct"] - away_sos["sos_adj_win_pct"],
         "sos_adj_run_diff_diff": home_sos["sos_adj_run_diff"] - away_sos["sos_adj_run_diff"],
@@ -328,11 +354,13 @@ def build_live_features(
 
     hard_hit = fetch_hard_hit(sorted(games["season"].unique().tolist()))
     if not hard_hit.empty:
-        home_hh = team_hard_hit_form_asof(hard_hit, home_team, as_of=game_date)
-        away_hh = team_hard_hit_form_asof(hard_hit, away_team, as_of=game_date)
-        features["hard_hit_rate_diff"] = home_hh - away_hh
+        home_bb = team_batted_ball_form_asof(hard_hit, home_team, as_of=game_date)
+        away_bb = team_batted_ball_form_asof(hard_hit, away_team, as_of=game_date)
+        for m in BATTED_BALL_METRICS:
+            features[f"{m}_diff"] = home_bb[m] - away_bb[m]
     else:
-        features["hard_hit_rate_diff"] = float("nan")
+        for m in BATTED_BALL_METRICS:
+            features[f"{m}_diff"] = float("nan")
 
     # No probable-umpire feed for live picks -- always neutral/NaN here, only
     # populated for historical training rows (see build_features).

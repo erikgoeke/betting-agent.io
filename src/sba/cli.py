@@ -44,6 +44,12 @@ def _tuned_params_path(model_type: str) -> Path:
 
 
 def _load_tuned_params(model_type: str) -> dict | None:
+    if model_type == "ensemble":
+        # The ensemble has no search of its own -- it reuses each member's
+        # separately tuned params (see EnsembleClassifier's params shape).
+        member_params = {m: _load_tuned_params(m) for m in ("lightgbm", "xgboost")}
+        member_params = {m: p for m, p in member_params.items() if p is not None}
+        return member_params or None
     path = _tuned_params_path(model_type)
     return json.loads(path.read_text()) if path.exists() else None
 

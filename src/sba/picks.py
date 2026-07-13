@@ -11,7 +11,7 @@ import pandas as pd
 from sba.data.bref_slate import fetch_todays_games
 from sba.data.mlb_stats import fetch_seasons, team_recent_form
 from sba.data.odds import american_to_decimal, fetch_mlb_odds, games_with_devigged_odds
-from sba.features import ROLLING_WINDOW, FEATURE_COLUMNS, build_live_features
+from sba.features import LONG_WINDOW, FEATURE_COLUMNS, build_live_features
 from sba.model import load, predict_proba
 
 KELLY_FRACTION = 0.25  # quarter-Kelly: conservative stake sizing
@@ -98,8 +98,10 @@ def generate_picks(*, history_seasons: list[int], days_ahead: int = 0) -> list[P
     picks = []
     for mg in market_games:
         as_of = pd.Timestamp(mg["commence_time"]).tz_localize(None)
-        home_recent = team_recent_form(games, mg["home_team"], as_of=as_of, window=ROLLING_WINDOW)
-        away_recent = team_recent_form(games, mg["away_team"], as_of=as_of, window=ROLLING_WINDOW)
+        # LONG_WINDOW games so the long-window form feature has its full lookback;
+        # build_live_features slices the shorter windows out of the same frame.
+        home_recent = team_recent_form(games, mg["home_team"], as_of=as_of, window=LONG_WINDOW)
+        away_recent = team_recent_form(games, mg["away_team"], as_of=as_of, window=LONG_WINDOW)
         if len(home_recent) < 3 or len(away_recent) < 3:
             continue  # not enough recent history to trust the model for this team
 

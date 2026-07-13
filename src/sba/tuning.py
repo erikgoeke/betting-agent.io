@@ -55,6 +55,11 @@ def tune(
     features: pd.DataFrame, *, valid_season: int, model_type: ModelType = "lightgbm", n_trials: int = 50
 ) -> dict:
     """Search hyperparameters, minimizing log loss on a single held-out season."""
+    if model_type == "ensemble":
+        raise ValueError(
+            "The ensemble has no hyperparameters of its own -- tune 'lightgbm' and "
+            "'xgboost' separately; the ensemble picks both tuned sets up automatically."
+        )
     train_df = features[features["season"] < valid_season]
     valid_df = features[features["season"] == valid_season]
     if train_df.empty or valid_df.empty:

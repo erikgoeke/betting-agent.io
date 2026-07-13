@@ -1,7 +1,7 @@
 {
-  "learning_rate": 0.01813531126762532,
+  "learning_rate": 0.04182946734231617,
   "max_depth": 2,
-  "min_child_weight": 66,
-  "n_estimators": 324,
-  "reg_lambda": 0.6547246756980601
+  "min_child_weight": 13,
+  "n_estimators": 203,
+  "reg_lambda": 0.005659364893406561
 }
