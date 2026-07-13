@@ -812,14 +812,18 @@ def _render_methodology() -> str:
             "Win-probability model",
             """<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>
             <mi>P</mi><mo>(</mo><mtext>home</mtext><mo>)</mo><mo>=</mo>
-            <mi>&sigma;</mi><mo>(</mo><msup><mi mathvariant="bold">&beta;</mi><mi>T</mi></msup>
-            <mi mathvariant="bold">x</mi><mo>)</mo><mo>=</mo>
-            <mfrac><mn>1</mn><mrow><mn>1</mn><mo>+</mo>
-            <msup><mi>e</mi><mrow><mo>&minus;</mo><msup><mi mathvariant="bold">&beta;</mi><mi>T</mi></msup>
-            <mi mathvariant="bold">x</mi></mrow></msup></mrow></mfrac>
+            <mi>g</mi><mo>(</mo><msub><mi>F</mi><mtext>GBM</mtext></msub>
+            <mo>(</mo><mi mathvariant="bold">x</mi><mo>)</mo><mo>)</mo><mo>,</mo>
+            <mspace width="0.5em"/>
+            <msub><mi>F</mi><mtext>GBM</mtext></msub><mo>(</mo><mi mathvariant="bold">x</mi><mo>)</mo>
+            <mo>=</mo><munderover><mo>&sum;</mo><mrow><mi>t</mi><mo>=</mo><mn>1</mn></mrow><mi>T</mi></munderover>
+            <mi>&eta;</mi><mo>&sdot;</mo><msub><mi>f</mi><mi>t</mi></msub><mo>(</mo><mi mathvariant="bold">x</mi><mo>)</mo>
             </mrow></math>""",
-            "Logistic regression on standardized form differentials "
-            "x = [&Delta;win%, &Delta;run-diff, &Delta;rest], fit on six seasons of games.",
+            "Gradient-boosted trees (LightGBM, Optuna-tuned) over ~25 leak-free features -- "
+            "Elo ratings, rolling form at 5/15/30-game windows, starting-pitcher FIP/WHIP/K%/BB%, "
+            "team OPS/ISO/BABIP, Statcast xwOBA-on-contact/barrel/hard-hit rates, park factor, "
+            "weather, umpire tendency -- with isotonic calibration g(&middot;) so the output "
+            "probabilities are honest, and recent seasons weighted more heavily in training.",
         ),
         (
             "Implied probability of an American line",
@@ -1010,7 +1014,7 @@ def generate_report(output_path: Path) -> None:
 {_render_props_section(scan_result)}
 {_render_methodology()}
 <footer>
-  <span>Logistic moneyline model &middot; EWM prop projections &middot; consensus devigged across surveyed books</span>
+  <span>Calibrated gradient-boosted moneyline model &middot; EWM prop projections &middot; consensus devigged across surveyed books</span>
   <span>SBA &middot; {now_utc.year}</span>
 </footer>
 </div>
