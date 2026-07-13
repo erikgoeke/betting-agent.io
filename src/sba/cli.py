@@ -80,16 +80,17 @@ def fetch_starters_cmd(
 @app.command()
 def train(
     seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to train on."),
-    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm', 'xgboost', or 'ensemble'."),
     use_tuned_params: bool = typer.Option(
         True, help="Use saved Optuna params from `sba tune` if available, else the built-in defaults."
     ),
+    calibrate: bool = typer.Option(True, help="Isotonic-calibrate the model's probabilities."),
 ) -> None:
     """Train the win-probability model on all cached seasons and save it."""
     params = _load_tuned_params(model_type) if use_tuned_params else None
     games = fetch_seasons(seasons)
     features = build_features(games)
-    pipeline = train_model(features, model_type=model_type, params=params)
+    pipeline = train_model(features, model_type=model_type, params=params, calibrate=calibrate)
     save(pipeline)
     console.print(f"Trained {model_type} on {len(features)} games ({sorted(features['season'].unique().tolist())}).")
     console.print(f"Params: {params if params else 'defaults (no tuned params found)'}")
@@ -104,7 +105,7 @@ def train(
 
 @app.command()
 def tune(
-    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm', 'xgboost', or 'ensemble'."),
     valid_season: int = typer.Option(CURRENT_YEAR - 1, help="Season to validate against while tuning."),
     seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to pull data from."),
     n_trials: int = typer.Option(50, help="Number of Optuna trials."),
@@ -123,13 +124,14 @@ def tune(
 def backtest(
     test_season: int = typer.Option(CURRENT_YEAR - 1, help="Season to hold out for evaluation."),
     seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to pull data from."),
-    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm', 'xgboost', or 'ensemble'."),
     use_tuned_params: bool = typer.Option(True, help="Use saved Optuna params from `sba tune` if available."),
+    calibrate: bool = typer.Option(True, help="Isotonic-calibrate the model's probabilities."),
 ) -> None:
     """Evaluate model accuracy/calibration on a held-out season (not a betting ROI backtest)."""
     params = _load_tuned_params(model_type) if use_tuned_params else None
     games = fetch_seasons(seasons)
-    result = run_backtest(games, test_season, model_type=model_type, params=params)
+    result = run_backtest(games, test_season, model_type=model_type, params=params, calibrate=calibrate)
     console.print(f"Train seasons: {result.train_seasons} ({result.n_train} games)")
     console.print(f"Test season: {result.test_season} ({result.n_test} games)")
     console.print(f"Accuracy: {result.accuracy:.3f}  Log loss: {result.log_loss:.3f}  Brier: {result.brier_score:.3f}")
@@ -145,7 +147,7 @@ def backtest(
 @app.command("train-runline")
 def train_runline_cmd(
     seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to train on."),
-    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm', 'xgboost', or 'ensemble'."),
 ) -> None:
     """Train the run-line model (P(home team wins by 2+ runs), i.e. covers a -1.5 line) and save it."""
     games = fetch_seasons(seasons)
@@ -159,7 +161,7 @@ def train_runline_cmd(
 def backtest_runline_cmd(
     test_season: int = typer.Option(CURRENT_YEAR - 1, help="Season to hold out for evaluation."),
     seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to pull data from."),
-    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm', 'xgboost', or 'ensemble'."),
 ) -> None:
     """Evaluate the run-line model's accuracy/calibration on a held-out season."""
     games = fetch_seasons(seasons)
@@ -172,7 +174,7 @@ def backtest_runline_cmd(
 @app.command("train-totals")
 def train_totals_cmd(
     seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to train on."),
-    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm', 'xgboost', or 'ensemble'."),
 ) -> None:
     """Train the totals (expected combined runs) regression model and save it."""
     games = fetch_seasons(seasons)
@@ -186,7 +188,7 @@ def train_totals_cmd(
 def backtest_totals_cmd(
     test_season: int = typer.Option(CURRENT_YEAR - 1, help="Season to hold out for evaluation."),
     seasons: list[int] = typer.Option(DEFAULT_SEASONS, help="Seasons to pull data from."),
-    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm' or 'xgboost'."),
+    model_type: ModelType = typer.Option("lightgbm", help="'lightgbm', 'xgboost', or 'ensemble'."),
 ) -> None:
     """Evaluate the totals model's MAE/RMSE on a held-out season (a point estimate,
     not a classifier -- there's no historical totals-line data to grade an

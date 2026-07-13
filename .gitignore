@@ -11,7 +11,8 @@ wheels/
 
 # Project data/artifacts
 /data/
-/models/
+/models/*
+!/models/tuned_params_*.json
 /logs/
 /public/
 .env

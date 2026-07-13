@@ -41,7 +41,10 @@ def _suggest_params(trial: optuna.Trial, model_type: ModelType) -> dict:
 
 def _objective(trial: optuna.Trial, train_df: pd.DataFrame, valid_df: pd.DataFrame, model_type: ModelType) -> float:
     params = _suggest_params(trial, model_type)
-    pipeline = build_pipeline(model_type=model_type, params=params)
+    # Uncalibrated: calibration doesn't change which base-model hyperparameters
+    # are best, and doing a 5-fold calibration refit on every one of ~50 trials
+    # would multiply the search's runtime for no benefit to the search itself.
+    pipeline = build_pipeline(model_type=model_type, params=params, calibrate=False)
     pipeline.fit(train_df[FEATURE_COLUMNS], train_df[LABEL_COLUMN])
     proba = pipeline.predict_proba(valid_df[FEATURE_COLUMNS])
     home_col = list(pipeline.classes_).index(1)

@@ -18,6 +18,7 @@ import joblib
 import lightgbm as lgb
 import pandas as pd
 import xgboost as xgb
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss, mean_absolute_error, mean_squared_error
 from sklearn.pipeline import Pipeline
 
@@ -62,9 +63,11 @@ def _regressor_params(model_type: ModelType, params: dict | None) -> dict:
     return merged
 
 
-def build_runline_pipeline(model_type: ModelType = "lightgbm", params: dict | None = None) -> Pipeline:
+def build_runline_pipeline(model_type: ModelType = "lightgbm", params: dict | None = None, *, calibrate: bool = True) -> Pipeline:
     merged = {**DEFAULT_PARAMS[model_type], **(params or {})}
     clf = lgb.LGBMClassifier(**merged) if model_type == "lightgbm" else xgb.XGBClassifier(**merged)
+    if calibrate:
+        clf = CalibratedClassifierCV(estimator=clf, method="isotonic", cv=5)
     return Pipeline([("clf", clf)])
 
 

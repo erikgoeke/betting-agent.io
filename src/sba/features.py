@@ -47,7 +47,15 @@ STARTER_DIFF_COLUMNS = ["starter_whip_diff", "starter_k_rate_diff", "starter_bb_
 # for build_live_features; harmless for tree models, just never informative live.
 OTHER_DIFF_COLUMNS = ["hard_hit_rate_diff", "ump_run_factor"]
 
-FEATURE_COLUMNS = CORE_FEATURE_COLUMNS + STARTER_DIFF_COLUMNS + OFFENSE_DIFF_COLUMNS + OTHER_DIFF_COLUMNS
+# Consistently ~0 SHAP importance across backtests -- pruned from what the model
+# actually trains on. Still computed above (dropna gate, other features derive
+# from them) so removing them here doesn't change anything upstream.
+_ZERO_IMPORTANCE_COLUMNS = {"rest_days_diff", "away_timezone_shift", "bullpen_usage_diff"}
+
+FEATURE_COLUMNS = [
+    c for c in CORE_FEATURE_COLUMNS + STARTER_DIFF_COLUMNS + OFFENSE_DIFF_COLUMNS + OTHER_DIFF_COLUMNS
+    if c not in _ZERO_IMPORTANCE_COLUMNS
+]
 LABEL_COLUMN = "home_win"
 
 

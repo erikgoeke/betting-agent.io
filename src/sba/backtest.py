@@ -44,7 +44,12 @@ def calibration_table(y_true: pd.Series, y_prob: pd.Series, bins: int = 10) -> p
 
 
 def run_backtest(
-    games: pd.DataFrame, test_season: int, *, model_type: ModelType = "lightgbm", params: dict | None = None
+    games: pd.DataFrame,
+    test_season: int,
+    *,
+    model_type: ModelType = "lightgbm",
+    params: dict | None = None,
+    calibrate: bool = True,
 ) -> BacktestResult:
     features = build_features(games)
     train_df = features[features["season"] < test_season]
@@ -56,7 +61,7 @@ def run_backtest(
             f"(train rows={len(train_df)}, test rows={len(test_df)})"
         )
 
-    pipeline = train(train_df, model_type=model_type, params=params)
+    pipeline = train(train_df, model_type=model_type, params=params, calibrate=calibrate)
     y_prob = predict_proba(pipeline, test_df)
     y_true = test_df[LABEL_COLUMN]
 
