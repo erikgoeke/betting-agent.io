@@ -176,6 +176,46 @@ def test_history_browser_renders_date_input_and_embedded_data():
 
 def test_history_browser_empty_when_no_index():
     assert report._render_history_browser({}) == ""
+    assert report._render_history_browser({}, edge_index={}) == ""
+
+
+def test_history_browser_has_edge_and_winners_panels():
+    winners = {"2026-07-08": [{"away_team": "ATH", "home_team": "DET", "away_runs": 3.0, "home_runs": 5.0, "home_win": 1, "prob_home": 0.63}]}
+    edge = {
+        "2026-07-10": [
+            {"away_team": "ARI", "home_team": "LAD", "pick": "ARI", "side": "away",
+             "price": 219.0, "model": 0.411, "edge": 0.101, "won": True}
+        ]
+    }
+
+    html = report._render_history_browser(winners, edge_index=edge)
+
+    assert 'data-view="edge"' in html and 'data-view="winners"' in html
+    assert 'id="history-edge-panel"' in html and 'id="history-winners-panel"' in html
+    # Date range spans BOTH indexes (edge date is later than the winners-only date).
+    assert 'min="2026-07-08"' in html and 'max="2026-07-10"' in html
+    # Edge rows are embedded as their own JSON blob for the edge panel.
+    assert 'id="edge-history-data"' in html
+    assert '"pick": "ARI"' in html
+
+
+def test_build_edge_history_index_keys_graded_picks_by_eastern_date():
+    graded = _graded_frame()  # two graded picks, both commencing 2026-07-08 ET evening
+
+    index = report._build_edge_history_index(graded)
+
+    assert list(index) == ["2026-07-08"]
+    assert len(index["2026-07-08"]) == 2
+    atl = next(p for p in index["2026-07-08"] if p["home_team"] == "ATL")
+    assert atl["pick"] == "ATL" and atl["side"] == "home" and atl["won"] is True
+    assert atl["price"] == -120.0 and atl["model"] == 0.60
+    nyy = next(p for p in index["2026-07-08"] if p["home_team"] == "NYY")
+    assert nyy["pick"] == "BOS" and nyy["won"] is False
+    assert nyy["model"] == 0.55  # away-side model prob = 1 - home prob
+
+
+def test_build_edge_history_index_empty_log():
+    assert report._build_edge_history_index(pd.DataFrame()) == {}
 
 
 def test_generate_report_includes_history_browser_when_available(tmp_path, monkeypatch):

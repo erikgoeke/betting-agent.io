@@ -36,7 +36,7 @@ from sba.features import build_features
 from sba.model import load as load_model
 from sba.model import predict_proba
 from sba.picks import KELLY_FRACTION, Pick, generate_picks
-from sba.tracking import grade_picks, log_picks, summarize_record, todays_picks_from_log
+from sba.tracking import _game_date_eastern, grade_picks, log_picks, summarize_record, todays_picks_from_log
 
 TOP_N = 10
 PAGE_PASSWORD_ENV = "PAGE_PASSWORD"
@@ -558,43 +558,115 @@ def _build_history_index() -> dict[str, list[dict]]:
     return index
 
 
-def _render_history_browser(history_index: dict[str, list[dict]]) -> str:
-    """A date picker over `history_index`, rendered entirely client-side via
-    embedded JSON -- this is a static page with no backend to query on demand."""
-    if not history_index:
+def _build_edge_history_index(graded: pd.DataFrame) -> dict[str, list[dict]]:
+    """Graded edge picks (real logged odds) keyed by ET game date -- the value-side
+    history the picks log has been accumulating since logging began. Unlike the
+    model retrospective this CANNOT be reconstructed for earlier dates: an edge
+    pick is model-vs-market, and no historical odds source exists (free tier)."""
+    if graded is None or graded.empty:
+        return {}
+    index: dict[str, list[dict]] = {}
+    for _, row in graded.dropna(subset=["won"]).iterrows():
+        date_key = _game_date_eastern(row["commence_time"]).strftime("%Y-%m-%d")
+        picked_home = row["side"] == "home"
+        index.setdefault(date_key, []).append(
+            {
+                "away_team": row["away_team"],
+                "home_team": row["home_team"],
+                "pick": row["home_team"] if picked_home else row["away_team"],
+                "side": row["side"],
+                "price": float(row["side_price"]),
+                "model": round(float(row["model_home_win_prob"] if picked_home else 1 - row["model_home_win_prob"]), 4),
+                "edge": round(float(row["edge"]), 4),
+                "won": bool(row["won"]),
+            }
+        )
+    return index
+
+
+def _render_history_browser(history_index: dict[str, list[dict]], edge_index: dict[str, list[dict]] | None = None) -> str:
+    """A date picker over the season's history, rendered entirely client-side via
+    embedded JSON -- this is a static page with no backend to query on demand.
+
+    Two layers per date: the actual edge picks graded at their logged real odds
+    (only for dates since pick-logging began -- edge picks are model-vs-market and
+    historical odds don't exist before then), and the current model's winner calls
+    reapplied in hindsight (available for every date, no odds involved).
+    """
+    edge_index = edge_index or {}
+    if not history_index and not edge_index:
         return ""
 
-    dates = sorted(history_index)
+    dates = sorted(set(history_index) | set(edge_index))
     data_json = json.dumps(history_index).replace("</script>", "<\\/script>")
+    edge_json = json.dumps(edge_index).replace("</script>", "<\\/script>")
     return f"""
 <div class="card">
 <h2>Browse any date this season</h2>
-<p class="sub"><strong>Today's</strong> model, reapplied to every game this season and graded against the
-final score -- no market odds involved (same odds-free method as the retrospective above). This is
-recomputed fresh each time the model is retrained, so it will show a different call than the Results
-table above for the same game if the model has since changed: the Results table is what was actually
-bet at the time (whatever model was live that day); this section is what the current model would say
-in hindsight. They're expected to disagree sometimes -- that's the model improving, not a bug.</p>
+<p class="sub"><strong>Edge picks</strong> are the value plays graded at their real logged odds -- the
+same thing the Results table tracks. Only dates since pick-logging began have them: an edge is
+model-vs-market, and no historical odds source exists for earlier dates. <strong>Predicted winners</strong>
+is <strong>today's</strong> model reapplied to every game as a straight who-wins call (no odds involved) --
+recomputed each time the model retrains, so it can disagree with what was actually bet at the time.
+That disagreement is the model improving, not a bug.</p>
 <input type="date" id="history-date" min="{dates[0]}" max="{dates[-1]}">
-<div id="history-results"></div>
+<div class="daytabs" id="history-tabs">
+  <button type="button" data-view="edge" class="active">Edge picks<small>real odds</small></button>
+  <button type="button" data-view="winners">Predicted winners<small>no odds</small></button>
+</div>
+<div id="history-edge-panel"></div>
+<div id="history-winners-panel" hidden></div>
 </div>
 <script type="application/json" id="history-data">{data_json}</script>
+<script type="application/json" id="edge-history-data">{edge_json}</script>
 <script>
 (function () {{
   var data = JSON.parse(document.getElementById("history-data").textContent);
+  var edgeData = JSON.parse(document.getElementById("edge-history-data").textContent);
   var input = document.getElementById("history-date");
-  var results = document.getElementById("history-results");
-  function render(dateKey) {{
-    var games = data[dateKey];
-    if (!games || !games.length) {{
-      results.innerHTML = '<p class="unavailable">No games this season have enough prior team history for a model call on this date.</p>';
-      return;
+  var edgePanel = document.getElementById("history-edge-panel");
+  var winnersPanel = document.getElementById("history-winners-panel");
+  var tabs = document.querySelectorAll("#history-tabs button");
+
+  function americanToDecimal(o) {{ return o > 0 ? 1 + o / 100 : 1 + 100 / -o; }}
+  function recordSummary(wins, losses, units, note) {{
+    var unitsStr = (units >= 0 ? "+" : "") + units.toFixed(2) + "u";
+    var hitRate = (wins + losses) ? (wins / (wins + losses) * 100).toFixed(1) : "0.0";
+    return '<p class="sub"><span class="record"><span>Record <strong>' + wins + '&ndash;' + losses + '</strong></span>' +
+      '<span>Hit rate <strong>' + hitRate + '%</strong></span>' +
+      '<span>P/L <strong class="' + (units >= 0 ? "pos" : "neg") + '">' + unitsStr + '</strong> ' + note + '</span></span></p>';
+  }}
+
+  function edgeSection(picks) {{
+    if (!picks || !picks.length) {{
+      return '<p class="unavailable">No picks were logged with odds for this date &mdash; edge history only exists ' +
+        'from the day pick-logging began. Earlier dates have no odds to grade against; see the Predicted winners tab.</p>';
     }}
-    // No real historical odds exist for an arbitrary past date (see the methodology
-    // note above) -- units assume a standard -110 line on both sides so the record
-    // has a comparable P/L figure to the real graded-picks table above, not because
-    // -110 was the actual price.
-    var STANDARD_DECIMAL_ODDS = 1 + 100 / 110;
+    var wins = 0, units = 0;
+    var rows = picks.map(function (g) {{
+      var pl = g.won ? americanToDecimal(g.price) - 1 : -1;
+      if (g.won) wins++;
+      units += pl;
+      return '<tr class="' + (g.won ? "won" : "lost") + '">' +
+        '<td>' + g.away_team + ' @ ' + g.home_team + '</td>' +
+        '<td class="strong"><span class="chip">' + g.pick + '&nbsp;<small>' + g.side + '</small></span></td>' +
+        '<td class="num">' + (g.price > 0 ? "+" : "") + g.price.toFixed(0) + '</td>' +
+        '<td class="num">' + (g.model * 100).toFixed(1) + '%</td>' +
+        '<td class="num">' + (g.edge >= 0 ? "+" : "") + (g.edge * 100).toFixed(1) + '%</td>' +
+        '<td><span class="result ' + (g.won ? "pos" : "neg") + '">' + (g.won ? "&#10003; Won" : "&#10007; Lost") + '</span></td>' +
+        '<td class="num ' + (pl >= 0 ? "pos" : "neg") + '">' + (pl >= 0 ? "+" : "") + pl.toFixed(2) + 'u</td></tr>';
+    }}).join("");
+    return recordSummary(wins, picks.length - wins, units, "(flat 1u at the actual captured price)") +
+      '<div class="table-wrap"><table><thead><tr><th>Matchup</th><th>Pick</th><th class="num">Price</th>' +
+      '<th class="num">Model</th><th class="num">Edge</th><th>Result</th><th class="num">P/L</th></tr></thead><tbody>' +
+      rows + '</tbody></table></div>';
+  }}
+
+  function winnerSection(games) {{
+    if (!games || !games.length) {{
+      return '<p class="unavailable">No games this season have enough prior team history for a model call on this date.</p>';
+    }}
+    var STANDARD_DECIMAL_ODDS = 1 + 100 / 110;  // no real odds for this view -- see card note
     var wins = 0, units = 0;
     var rows = games.map(function (g) {{
       var homeFavored = g.prob_home >= 0.5;
@@ -607,21 +679,30 @@ in hindsight. They're expected to disagree sometimes -- that's the model improvi
         '<td class="num">' + g.away_runs.toFixed(0) + '&ndash;' + g.home_runs.toFixed(0) + '</td>' +
         '<td class="strong"><span class="chip">' + winner + '&nbsp;<small>' + (homeFavored ? "home" : "away") + '</small></span></td>' +
         '<td class="num strong">' + (prob * 100).toFixed(1) + '%</td>' +
-        '<td><span class="result ' + (correct ? "pos" : "neg") + '">' + (correct ? "&#10003; Correct" : "&#10007; Wrong") + '</span></td>' +
-        '</tr>';
+        '<td><span class="result ' + (correct ? "pos" : "neg") + '">' + (correct ? "&#10003; Correct" : "&#10007; Wrong") + '</span></td></tr>';
     }}).join("");
-    var losses = games.length - wins;
-    var hitRate = (wins / games.length * 100).toFixed(1);
-    var unitsStr = (units >= 0 ? "+" : "") + units.toFixed(2) + "u";
-    var summary = '<p class="sub"><span class="record"><span>Record <strong>' + wins + '&ndash;' + losses + '</strong></span>' +
-      '<span>Hit rate <strong>' + hitRate + '%</strong></span>' +
-      '<span>P/L <strong class="' + (units >= 0 ? "pos" : "neg") + '">' + unitsStr + '</strong> (flat 1u at a standard -110 line, not a real price)</span></span></p>';
-    results.innerHTML = summary + '<div class="table-wrap"><table><thead><tr>' +
-      '<th>Matchup</th><th class="num">Final</th><th>Model pick</th><th class="num">Win prob</th><th>Verdict</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    return recordSummary(wins, games.length - wins, units, "(flat 1u at a standard -110 line, not a real price)") +
+      '<div class="table-wrap"><table><thead><tr><th>Matchup</th><th class="num">Final</th><th>Model pick</th>' +
+      '<th class="num">Win prob</th><th>Verdict</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }}
+
+  function render(dateKey) {{
+    edgePanel.innerHTML = edgeSection(edgeData[dateKey]);
+    winnersPanel.innerHTML = winnerSection(data[dateKey]);
+  }}
+
+  tabs.forEach(function (btn) {{
+    btn.addEventListener("click", function () {{
+      tabs.forEach(function (b) {{ b.classList.remove("active"); }});
+      btn.classList.add("active");
+      edgePanel.hidden = btn.dataset.view !== "edge";
+      winnersPanel.hidden = btn.dataset.view !== "winners";
+    }});
+  }});
+
   input.addEventListener("change", function () {{ render(input.value); }});
-  var last = Object.keys(data).sort().slice(-1)[0];
+  var allDates = Object.keys(data).concat(Object.keys(edgeData));
+  var last = allDates.sort().slice(-1)[0];
   if (last) {{ input.value = last; render(last); }}
 }})();
 </script>
@@ -1010,7 +1091,7 @@ def generate_report(output_path: Path) -> None:
 {_render_tiles(scan_result, picks)}
 {_render_day_tabs(yesterday_df, today_df, tomorrow_df, picks_error, now_for_status)}
 {_render_results_section(graded)}
-{_render_history_browser(history_index)}
+{_render_history_browser(history_index, _build_edge_history_index(graded))}
 {_render_props_section(scan_result)}
 {_render_methodology()}
 <footer>
