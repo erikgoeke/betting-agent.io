@@ -16,6 +16,7 @@ def _stub_tracking(monkeypatch):
     monkeypatch.setattr(report, "grade_picks", lambda season: (_ for _ in ()).throw(FileNotFoundError("no log")))
     monkeypatch.setattr(report, "todays_picks_from_log", lambda: pd.DataFrame())
     monkeypatch.setattr(report, "_model_retrospective", lambda offset, now: pd.DataFrame())
+    monkeypatch.setattr(report, "_build_history_index", lambda: {})
 
 
 def _fake_scan_result() -> daily_scan.DailyScanResult:
@@ -154,6 +155,44 @@ def test_retrospective_card_grades_model_calls_against_finals():
     assert "-170" in html
     # Final scores shown away-home to match the matchup order.
     assert "3&ndash;5" in html and "7&ndash;2" in html
+
+
+def test_history_browser_renders_date_input_and_embedded_data():
+    index = {
+        "2026-07-08": [
+            {"away_team": "ATH", "home_team": "DET", "away_runs": 3.0, "home_runs": 5.0, "home_win": 1, "prob_home": 0.63},
+            {"away_team": "PHI", "home_team": "CIN", "away_runs": 7.0, "home_runs": 2.0, "home_win": 0, "prob_home": 0.56},
+        ]
+    }
+
+    html = report._render_history_browser(index)
+
+    assert '<input type="date" id="history-date"' in html
+    assert 'min="2026-07-08"' in html and 'max="2026-07-08"' in html
+    # The raw game data is embedded as JSON for client-side rendering, not pre-rendered server-side.
+    assert '"home_team": "DET"' in html
+    assert "Browse any date this season" in html
+
+
+def test_history_browser_empty_when_no_index():
+    assert report._render_history_browser({}) == ""
+
+
+def test_generate_report_includes_history_browser_when_available(tmp_path, monkeypatch):
+    monkeypatch.setattr(report, "scan_today", lambda: _fake_scan_result())
+    monkeypatch.setattr(report, "generate_picks", lambda history_seasons, days_ahead=0: [])
+    monkeypatch.setattr(
+        report,
+        "_build_history_index",
+        lambda: {"2026-07-08": [{"away_team": "ATH", "home_team": "DET", "away_runs": 3.0, "home_runs": 5.0, "home_win": 1, "prob_home": 0.63}]},
+    )
+
+    output_path = tmp_path / "index.html"
+    report.generate_report(output_path)
+
+    text = output_path.read_text()
+    assert "Browse any date this season" in text
+    assert "history-date" in text
 
 
 def test_model_update_card_shows_when_retrained_model_would_flip_a_loss(monkeypatch):

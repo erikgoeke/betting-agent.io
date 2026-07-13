@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -201,6 +202,11 @@ footer {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
 }
 #gate-error { color: var(--bad); display: none; font-size: 0.85rem; margin: 0.75rem 0 0; }
+#history-date {
+  padding: 0.5rem 0.7rem; font-size: 0.95rem; border: 1px solid var(--hairline); border-radius: 8px;
+  background: var(--page); color: var(--ink); margin: 0 0 1rem;
+}
+#history-date:focus { border-color: var(--accent); outline: none; }
 """
 
 
@@ -514,6 +520,96 @@ def _render_model_update_card(actual: pd.DataFrame, now: datetime, days_offset: 
         "model changes would have helped.</p>"
         f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div></div>'
     )
+
+
+def _build_history_index() -> dict[str, list[dict]]:
+    """Every day this season's reconstructed pregame model call, keyed by ISO
+    date -- powers the client-side "browse any date" picker below. Same
+    odds-free reconstruction as _model_retrospective (features only ever use
+    information strictly before each game, so this is the same probability
+    the model would have produced before first pitch), just precomputed for
+    every date at once instead of one day at a time.
+
+    Scoped to the current season only, not full multi-season history -- a few
+    hundred games embeds fine in a static page; six seasons' worth (~13k
+    games) would bloat it for little practical benefit (nobody's placing a
+    bet on a 2022 game).
+    """
+    games = fetch_seasons(DEFAULT_SEASONS)
+    features = build_features(games)
+    season_features = features[features["season"] == CURRENT_YEAR]
+    if season_features.empty:
+        return {}
+
+    probs = predict_proba(load_model(), season_features)
+    index: dict[str, list[dict]] = {}
+    for (_, row), prob in zip(season_features.iterrows(), probs):
+        date_key = row["date"].strftime("%Y-%m-%d")
+        index.setdefault(date_key, []).append(
+            {
+                "away_team": row["away_team"],
+                "home_team": row["home_team"],
+                "away_runs": float(row["away_runs"]),
+                "home_runs": float(row["home_runs"]),
+                "home_win": int(row["home_win"]),
+                "prob_home": round(float(prob), 4),
+            }
+        )
+    return index
+
+
+def _render_history_browser(history_index: dict[str, list[dict]]) -> str:
+    """A date picker over `history_index`, rendered entirely client-side via
+    embedded JSON -- this is a static page with no backend to query on demand."""
+    if not history_index:
+        return ""
+
+    dates = sorted(history_index)
+    data_json = json.dumps(history_index).replace("</script>", "<\\/script>")
+    return f"""
+<div class="card">
+<h2>Browse any date this season</h2>
+<p class="sub">The model's reconstructed pregame call for any game this season, graded against the
+final score -- no market odds involved (same method as the retrospective above), just what the
+model would have said before first pitch.</p>
+<input type="date" id="history-date" min="{dates[0]}" max="{dates[-1]}">
+<div id="history-results"></div>
+</div>
+<script type="application/json" id="history-data">{data_json}</script>
+<script>
+(function () {{
+  var data = JSON.parse(document.getElementById("history-data").textContent);
+  var input = document.getElementById("history-date");
+  var results = document.getElementById("history-results");
+  function render(dateKey) {{
+    var games = data[dateKey];
+    if (!games || !games.length) {{
+      results.innerHTML = '<p class="unavailable">No games this season have enough prior team history for a model call on this date.</p>';
+      return;
+    }}
+    var rows = games.map(function (g) {{
+      var homeFavored = g.prob_home >= 0.5;
+      var winner = homeFavored ? g.home_team : g.away_team;
+      var prob = homeFavored ? g.prob_home : 1 - g.prob_home;
+      var correct = (g.home_win === 1) === homeFavored;
+      return '<tr class="' + (correct ? "won" : "lost") + '">' +
+        '<td>' + g.away_team + ' @ ' + g.home_team + '</td>' +
+        '<td class="num">' + g.away_runs.toFixed(0) + '&ndash;' + g.home_runs.toFixed(0) + '</td>' +
+        '<td class="strong"><span class="chip">' + winner + '&nbsp;<small>' + (homeFavored ? "home" : "away") + '</small></span></td>' +
+        '<td class="num strong">' + (prob * 100).toFixed(1) + '%</td>' +
+        '<td><span class="result ' + (correct ? "pos" : "neg") + '">' + (correct ? "&#10003; Correct" : "&#10007; Wrong") + '</span></td>' +
+        '</tr>';
+    }}).join("");
+    results.innerHTML = '<div class="table-wrap"><table><thead><tr>' +
+      '<th>Matchup</th><th class="num">Final</th><th>Model pick</th><th class="num">Win prob</th><th>Verdict</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }}
+  input.addEventListener("change", function () {{ render(input.value); }});
+  var last = Object.keys(data).sort().slice(-1)[0];
+  if (last) {{ input.value = last; render(last); }}
+}})();
+</script>
+"""
 
 
 def _render_day_tabs(
@@ -869,6 +965,11 @@ def generate_report(output_path: Path) -> None:
     except Exception:
         tomorrow_df = pd.DataFrame()
 
+    try:
+        history_index = _build_history_index()
+    except Exception:
+        history_index = {}
+
     now_for_status = datetime.now(timezone.utc)
 
     now_utc = datetime.now(timezone.utc)
@@ -889,6 +990,7 @@ def generate_report(output_path: Path) -> None:
 {_render_tiles(scan_result, picks)}
 {_render_day_tabs(yesterday_df, today_df, tomorrow_df, picks_error, now_for_status)}
 {_render_results_section(graded)}
+{_render_history_browser(history_index)}
 {_render_props_section(scan_result)}
 {_render_methodology()}
 <footer>
