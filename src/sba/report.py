@@ -587,11 +587,18 @@ model would have said before first pitch.</p>
       results.innerHTML = '<p class="unavailable">No games this season have enough prior team history for a model call on this date.</p>';
       return;
     }}
+    // No real historical odds exist for an arbitrary past date (see the methodology
+    // note above) -- units assume a standard -110 line on both sides so the record
+    // has a comparable P/L figure to the real graded-picks table above, not because
+    // -110 was the actual price.
+    var STANDARD_DECIMAL_ODDS = 1 + 100 / 110;
+    var wins = 0, units = 0;
     var rows = games.map(function (g) {{
       var homeFavored = g.prob_home >= 0.5;
       var winner = homeFavored ? g.home_team : g.away_team;
       var prob = homeFavored ? g.prob_home : 1 - g.prob_home;
       var correct = (g.home_win === 1) === homeFavored;
+      if (correct) {{ wins++; units += STANDARD_DECIMAL_ODDS - 1; }} else {{ units -= 1; }}
       return '<tr class="' + (correct ? "won" : "lost") + '">' +
         '<td>' + g.away_team + ' @ ' + g.home_team + '</td>' +
         '<td class="num">' + g.away_runs.toFixed(0) + '&ndash;' + g.home_runs.toFixed(0) + '</td>' +
@@ -600,7 +607,13 @@ model would have said before first pitch.</p>
         '<td><span class="result ' + (correct ? "pos" : "neg") + '">' + (correct ? "&#10003; Correct" : "&#10007; Wrong") + '</span></td>' +
         '</tr>';
     }}).join("");
-    results.innerHTML = '<div class="table-wrap"><table><thead><tr>' +
+    var losses = games.length - wins;
+    var hitRate = (wins / games.length * 100).toFixed(1);
+    var unitsStr = (units >= 0 ? "+" : "") + units.toFixed(2) + "u";
+    var summary = '<p class="sub"><span class="record"><span>Record <strong>' + wins + '&ndash;' + losses + '</strong></span>' +
+      '<span>Hit rate <strong>' + hitRate + '%</strong></span>' +
+      '<span>P/L <strong class="' + (units >= 0 ? "pos" : "neg") + '">' + unitsStr + '</strong> (flat 1u at a standard -110 line, not a real price)</span></span></p>';
+    results.innerHTML = summary + '<div class="table-wrap"><table><thead><tr>' +
       '<th>Matchup</th><th class="num">Final</th><th>Model pick</th><th class="num">Win prob</th><th>Verdict</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }}
